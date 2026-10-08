@@ -322,20 +322,32 @@ export const useVocaStore = create<VocaState>((set, get) => ({
           ? linkData.filter(l => l.student_id === get().studentId).map(l => l.tutor_id)
           : [get().tutorId];
 
-        // Fetch wordbooks created in DB
-        let { data: wbData, error: wbErr } = await client
-          .from('wordbooks')
-          .select('*')
-          .order('created_at', { ascending: false });
+        // Filter wordbooks for authenticated user vs demo account
+        const currentTutorId = get().tutorId;
+        const isUserAuth = isUuid(currentTutorId);
+
+        let wbQuery = client.from('wordbooks').select('*').order('created_at', { ascending: false });
+        if (isUserAuth) {
+          // Authenticated user: show own created wordbooks + public sample wordbooks (tutor_id is null)
+          wbQuery = wbQuery.or(`tutor_id.eq.${currentTutorId},tutor_id.is.null`);
+        } else {
+          // Demo/Guest account: show ONLY public sample wordbooks (tutor_id is null)
+          wbQuery = wbQuery.is('tutor_id', null);
+        }
+
+        let { data: wbData, error: wbErr } = await wbQuery;
         
         if (!wbErr && wbData) {
-          // If Supabase DB has 0 wordbooks, seed initial sample data into Supabase DB
+          // If Supabase DB has 0 wordbooks for public/sample, seed initial sample data into Supabase DB
           if (wbData.length === 0) {
-            await seedSampleDataToSupabase(client, get().tutorId);
-            const { data: seededWbs } = await client
-              .from('wordbooks')
-              .select('*')
-              .order('created_at', { ascending: false });
+            await seedSampleDataToSupabase(client, isUserAuth ? currentTutorId : null);
+            let reQuery = client.from('wordbooks').select('*').order('created_at', { ascending: false });
+            if (isUserAuth) {
+              reQuery = reQuery.or(`tutor_id.eq.${currentTutorId},tutor_id.is.null`);
+            } else {
+              reQuery = reQuery.is('tutor_id', null);
+            }
+            const { data: seededWbs } = await reQuery;
             wbData = seededWbs || [];
           }
 

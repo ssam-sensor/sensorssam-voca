@@ -34,8 +34,8 @@ export const Navbar: React.FC = () => {
             <div>
               {/* Mobile 2-line layout */}
               <div className="sm:hidden flex flex-col leading-none">
-                <span className="font-extrabold text-[12px] text-slate-800 tracking-tight">SensorSsam</span>
-                <span className="font-black text-[10px] text-blue-600 tracking-wider uppercase mt-0.5">VOCA</span>
+                <span className="font-extrabold text-[10px] text-slate-800 tracking-tight">SensorSsam</span>
+                <span className="font-black text-[9px] text-blue-600 tracking-wider uppercase mt-0.5">VOCA</span>
               </div>
               {/* Desktop 1-line layout */}
               <div className="hidden sm:flex items-center gap-2">
