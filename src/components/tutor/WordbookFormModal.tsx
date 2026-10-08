@@ -38,6 +38,31 @@ export const WordbookFormModal: React.FC<WordbookFormModalProps> = ({ isOpen, on
   // Parsed Words Preview Table
   const [parsedWords, setParsedWords] = useState<VocaBatchItem[]>([]);
 
+  // Reset form state to initial clean slate
+  const resetForm = () => {
+    setTitle('');
+    setChapter('');
+    setSelectedFile(null);
+    setOcrError(null);
+    setAiTopic('');
+    setAiCount(10);
+    setAiError(null);
+    setBatchRawText('');
+    setParsedWords([]);
+    setActiveTab('ocr');
+  };
+
+  const handleClose = () => {
+    resetForm();
+    onClose();
+  };
+
+  React.useEffect(() => {
+    if (isOpen) {
+      resetForm();
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   // Handle Multimodal File OCR Extraction
@@ -183,7 +208,7 @@ export const WordbookFormModal: React.FC<WordbookFormModalProps> = ({ isOpen, on
     }
 
     await addWordbookWithWords(title.trim(), chapter.trim(), validWords);
-    onClose();
+    handleClose();
   };
 
   const formatFileSize = (bytes: number) => {
@@ -203,7 +228,7 @@ export const WordbookFormModal: React.FC<WordbookFormModalProps> = ({ isOpen, on
             <p className="text-xs text-slate-500">교재 이미지/PDF 업로드, AI 생성, 일괄 붙여넣기, 직접 입력 지원</p>
           </div>
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="p-1 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition-colors"
           >
             <X className="w-5 h-5" />
@@ -655,7 +680,7 @@ export const WordbookFormModal: React.FC<WordbookFormModalProps> = ({ isOpen, on
           </span>
           <div className="flex items-center gap-3">
             <button
-              onClick={onClose}
+              onClick={handleClose}
               className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-200/60 transition-colors"
             >
               취소
