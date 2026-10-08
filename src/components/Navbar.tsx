@@ -49,18 +49,25 @@ export const Navbar: React.FC = () => {
           </div>
         </div>
 
-        {/* Center: Role Switcher Pill (Compact on Mobile) */}
+        {/* Center: Role Switcher Pill with Student Access Restriction */}
         <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200 shadow-inner shrink-0">
           <button
-            onClick={() => setUserRole('tutor')}
+            onClick={() => {
+              if (userRole === 'student' && isLoggedIn) {
+                alert('학생 계정은 튜터 전용 화면에 진입할 수 없습니다.');
+                return;
+              }
+              setUserRole('tutor');
+            }}
             className={`flex items-center gap-1 px-2 sm:px-3.5 py-1 sm:py-1.5 rounded-lg text-xs font-bold transition-all ${
               userRole === 'tutor'
                 ? 'bg-blue-600 text-white shadow-sm'
                 : 'text-slate-600 hover:text-slate-800 hover:bg-slate-200/60'
             }`}
+            title={userRole === 'student' ? '학생 계정은 튜터 화면 접근 불가' : '튜터 모드로 전환'}
           >
             <GraduationCap className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-            <span className="hidden sm:inline">튜터 (교사/학부모)</span>
+            <span className="hidden sm:inline">튜터 모드</span>
             <span className="sm:hidden">튜터</span>
           </button>
 
@@ -73,13 +80,23 @@ export const Navbar: React.FC = () => {
             }`}
           >
             <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-            <span className="hidden sm:inline">학생 (학습/시험)</span>
+            <span className="hidden sm:inline">학생 모드</span>
             <span className="sm:hidden">학생</span>
           </button>
         </div>
 
-        {/* Right: Google OAuth Button */}
-        <div className="flex items-center gap-1 sm:gap-3 shrink-0">
+        {/* Right: Google OAuth Button & Role Badge */}
+        <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+          {isLoggedIn && (
+            <span className={`px-2 py-1 rounded-lg text-[11px] font-extrabold border ${
+              userRole === 'student'
+                ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                : 'bg-blue-50 text-blue-800 border-blue-300'
+            }`}>
+              {userRole === 'student' ? '🎓 학생 회원' : '👨‍🏫 튜터 회원'}
+            </span>
+          )}
+
           <button
             onClick={handleAuthToggle}
             className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-100 text-xs font-semibold text-slate-800 transition-colors shadow-xs shrink-0 max-w-[130px] sm:max-w-none"

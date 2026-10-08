@@ -309,6 +309,32 @@ export const useVocaStore = create<VocaState>((set, get) => ({
             }
           }
 
+          // Fetch registered tutors from profiles table where role = 'tutor'
+          try {
+            const { data: tutorProfiles } = await client
+              .from('profiles')
+              .select('*')
+              .eq('role', 'tutor');
+
+            if (tutorProfiles && tutorProfiles.length > 0) {
+              const mappedTutors = tutorProfiles.map(p => ({
+                id: p.id,
+                name: p.email ? `${p.email.split('@')[0]} (등록 튜터)` : '등록 튜터',
+                title: p.email || '등록된 튜터 계정',
+                avatarBg: 'bg-indigo-600'
+              }));
+
+              const hasDefault = mappedTutors.some(t => t.id === 'tutor-sensorssam');
+              const fullTutorList = hasDefault ? mappedTutors : [
+                { id: 'tutor-sensorssam', name: 'SensorSsam (대표 튜터)', title: 'AI 1:1 맞춤 어휘', avatarBg: 'bg-blue-600' },
+                ...mappedTutors
+              ];
+              set({ availableTutors: fullTutorList });
+            }
+          } catch (e) {
+            console.warn('Failed fetching registered tutor profiles:', e);
+          }
+
           // Query ALL wordbooks in Supabase so tutors share all wordbooks with each other!
           const { data: wbData, error: wbErr } = await client
             .from('wordbooks')
@@ -321,16 +347,17 @@ export const useVocaStore = create<VocaState>((set, get) => ({
               tutor_name: wb.tutor_name || (wb.is_student_created ? '학생 (개인 단어장)' : 'SensorSsam (대표 튜터)')
             }));
 
-            // Filter for student mode vs tutor mode
+            // Filter for student mode: ONLY display wordbooks of checked tutors + student's own personal wordbooks!
             if (get().userRole === 'student') {
               const selectedTutors = get().linkedTutorIds;
-              activeWbs = activeWbs.filter(wb =>
-                wb.is_student_created ||
-                wb.tutor_id === userId ||
-                !wb.tutor_id ||
-                selectedTutors.includes(wb.tutor_id || '') ||
-                selectedTutors.some(tId => (wb.tutor_name || '').toLowerCase().includes(tId.toLowerCase()))
-              );
+              activeWbs = activeWbs.filter(wb => {
+                if (wb.is_student_created || wb.creator_role === 'student' || wb.tutor_id === userId) return true;
+                if (wb.tutor_id && selectedTutors.includes(wb.tutor_id)) return true;
+                if (wb.tutor_name && selectedTutors.some(tId => (wb.tutor_name || '').toLowerCase().includes(tId.toLowerCase()))) return true;
+                // If SensorSsam is selected, include default tutor wordbooks
+                if (selectedTutors.includes('tutor-sensorssam') && (!wb.tutor_id || wb.tutor_name?.includes('SensorSsam'))) return true;
+                return false;
+              });
             }
 
             const wordsMap: Record<string, Word[]> = {};

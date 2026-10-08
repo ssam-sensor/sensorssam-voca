@@ -50,18 +50,20 @@ export default function Home() {
               <div>
                 <div className="flex items-center gap-2">
                   <span className="font-extrabold text-sm text-slate-800">
-                    {userRole === 'tutor' ? '튜터 (교사/학부모) 모드' : '학생 (학습/시험) 모드'}
+                    {userRole === 'tutor' ? '튜터 (교사/학부모) 화면' : '학생 (어휘 학습/테스트) 화면'}
                   </span>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                    userRole === 'tutor' ? 'bg-blue-100 text-blue-800' : 'bg-emerald-100 text-emerald-800'
+                  <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${
+                    userRole === 'tutor'
+                      ? 'bg-blue-100 text-blue-900 border-blue-300'
+                      : 'bg-emerald-100 text-emerald-900 border-emerald-300'
                   }`}>
-                    ACTIVE
+                    {userRole === 'tutor' ? '👨‍🏫 튜터 회원 로그인' : '🎓 학생 회원 로그인'}
                   </span>
                 </div>
                 <p className="text-xs text-slate-500 font-medium mt-0.5">
                   {userRole === 'tutor'
-                    ? '단어장 챕터 등록, AI 이미지/PDF 교재 추출, 시험지 인쇄 및 학생 성적 관리를 담당합니다.'
-                    : '등록된 챕터를 플래시카드로 학습하고 AI 맞춤 시험을 진행합니다.'}
+                    ? '전체 공유 단어장 챕터 등록, AI 이미지/PDF 교재 추출, 시험지 인쇄 및 학생 성적 관리를 담당합니다.'
+                    : '배정된 튜터들의 단어장을 플래시카드로 학습하고 AI 맞춤 시험을 진행하거나 개인 단어장을 등록합니다.'}
                 </p>
               </div>
             </div>
