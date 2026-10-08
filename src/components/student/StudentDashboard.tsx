@@ -157,16 +157,16 @@ export const StudentDashboard: React.FC = () => {
                   학생 맞춤 어휘 학습
                 </span>
 
-                {/* Creator & Delete Rule Badge */}
+                {/* Creator Badge */}
                 {selectedWb.is_student_created ? (
                   <span className="inline-flex items-center gap-1 px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px] sm:text-xs font-bold">
                     <UserCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                    학생 개인 등록 단어장 (삭제 가능)
+                    학생 개인 단어장
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1 px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-full bg-indigo-50 text-indigo-800 border border-indigo-200 text-[11px] sm:text-xs font-bold">
                     <Lock className="w-3 h-3 text-indigo-600 shrink-0" />
-                    담당: {selectedWb.tutor_name || 'SensorSsam'} (튜터 등록 - 학생 삭제 불가)
+                    {selectedWb.tutor_name || '튜터 배정'}
                   </span>
                 )}
               </div>
@@ -197,14 +197,14 @@ export const StudentDashboard: React.FC = () => {
                 배정 & 개인 단어장 목록 (총 {wordbooks.length}개)
               </label>
               <span className="text-[11px] text-slate-400 font-medium">
-                * 튜터 단어장은 학생이 지울 수 없으며, 개인 단어장만 삭제 가능합니다.
+                * 개인 단어장 삭제 가능
               </span>
             </div>
 
             <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
               {wordbooks.map((wb) => {
                 const isActive = wb.id === selectedWb.id;
-                const isStudentCreated = Boolean(wb.is_student_created || wb.creator_role === 'student');
+                const isStudentCreated = Boolean(wb.is_student_created || wb.creator_role === 'student' || wb.tutor_name === '학생 (개인 단어장)');
 
                 return (
                   <div
@@ -222,7 +222,7 @@ export const StudentDashboard: React.FC = () => {
                         <span>{wb.title.split(' ')[0]} {wb.chapter}</span>
                       </div>
                       <span className={`text-[10px] font-semibold ${isActive ? 'text-blue-100' : isStudentCreated ? 'text-emerald-700' : 'text-indigo-600'}`}>
-                        {isStudentCreated ? '개인 단어장' : `담당: ${wb.tutor_name || 'SensorSsam'}`}
+                        {isStudentCreated ? '개인 단어장' : (wb.tutor_name || '튜터 배정')}
                       </span>
                     </div>
 

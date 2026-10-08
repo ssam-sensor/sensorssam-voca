@@ -102,7 +102,7 @@ export const useVocaStore = create<VocaState>((set, get) => ({
     let filtered = allWbs;
     if (get().userRole === 'student') {
       filtered = allWbs.filter(wb => {
-        if (wb.is_student_created || wb.creator_role === 'student' || wb.tutor_id === userId) return true;
+        if (wb.is_student_created || wb.creator_role === 'student' || wb.tutor_name === '학생 (개인 단어장)' || (userId && wb.tutor_id === userId && get().accountRole === 'student')) return true;
         if (wb.tutor_id && selectedTutors.includes(wb.tutor_id)) return true;
         if (wb.tutor_name && selectedTutors.some(tId => (wb.tutor_name || '').toLowerCase().includes(tId.toLowerCase()))) return true;
         if (selectedTutors.includes('tutor-sensorssam') && (!wb.tutor_id || wb.tutor_name?.includes('SensorSsam'))) return true;
@@ -389,12 +389,25 @@ export const useVocaStore = create<VocaState>((set, get) => ({
           });
 
           if (realTutors.length > 0) {
-            const mappedTutors = realTutors.map(p => ({
-              id: p.id,
-              name: p.name && p.name.trim() ? p.name.trim() : '등록 튜터',
-              title: '', // Completely hide email address
-              avatarBg: 'bg-indigo-600'
-            }));
+            const mappedTutors = realTutors.map(p => {
+              let displayName = '';
+              const nameStr = (p.name || '').trim();
+              if (nameStr) {
+                displayName = nameStr.endsWith('튜터') ? nameStr : `${nameStr} 튜터`;
+              } else if (p.email) {
+                const prefix = p.email.split('@')[0];
+                displayName = `${prefix} 튜터`;
+              } else {
+                displayName = `${p.id.slice(0, 6)} 튜터`;
+              }
+
+              return {
+                id: p.id,
+                name: displayName,
+                title: '',
+                avatarBg: 'bg-indigo-600'
+              };
+            });
             set({ availableTutors: mappedTutors });
 
             const validIds = mappedTutors.map(t => t.id);
@@ -417,14 +430,23 @@ export const useVocaStore = create<VocaState>((set, get) => ({
 
         if (!wbErr && wbData) {
           let rawWbs: Wordbook[] = (wbData || []).map(wb => {
+            const isStudentCreated = Boolean(
+              wb.is_student_created ||
+              wb.creator_role === 'student' ||
+              wb.tutor_name === '학생 (개인 단어장)' ||
+              (userId && wb.tutor_id === userId && get().accountRole === 'student')
+            );
+
             let tName = wb.tutor_name || '';
             if (!tName || tName.includes('이튜터') || tName.includes('박튜터') || tName.includes('최튜터') ||
                 tName.includes('tutor-lee') || tName.includes('tutor-park') || tName.includes('tutor-choi')) {
-              tName = wb.is_student_created ? '학생 (개인 단어장)' : 'SensorSsam (대표 튜터)';
+              tName = isStudentCreated ? '학생 (개인 단어장)' : 'SensorSsam 튜터';
             }
             return {
               ...wb,
-              tutor_name: tName
+              tutor_name: tName,
+              is_student_created: isStudentCreated,
+              creator_role: isStudentCreated ? 'student' : (wb.creator_role || 'tutor')
             };
           });
 
@@ -434,7 +456,9 @@ export const useVocaStore = create<VocaState>((set, get) => ({
           if (get().userRole === 'student') {
             const selectedTutors = get().linkedTutorIds;
             activeWbs = rawWbs.filter(wb => {
-              if (wb.is_student_created || wb.creator_role === 'student' || (userId && wb.tutor_id === userId)) return true;
+              if (wb.is_student_created || wb.creator_role === 'student' || wb.tutor_name === '학생 (개인 단어장)' || (userId && wb.tutor_id === userId && get().accountRole === 'student')) {
+                return true;
+              }
               if (wb.tutor_id && selectedTutors.includes(wb.tutor_id)) return true;
               if (selectedTutors.includes('tutor-sensorssam') && (!wb.tutor_id || wb.tutor_name?.includes('SensorSsam'))) return true;
               return false;
@@ -546,10 +570,11 @@ export const useVocaStore = create<VocaState>((set, get) => ({
             words_count: (insertedWords || []).length
           };
 
+          const updatedAllWbs = [newWbObj, ...get().allWordbooks];
           const updatedWbs = [newWbObj, ...get().wordbooks];
           const updatedWords = { ...get().words, [insertedWb.id]: insertedWords || [] };
 
-          set({ wordbooks: updatedWbs, words: updatedWords, activeWordbookId: insertedWb.id });
+          set({ allWordbooks: updatedAllWbs, wordbooks: updatedWbs, words: updatedWords, activeWordbookId: insertedWb.id });
 
           if (typeof window !== 'undefined') {
             const currentTId = get().tutorId;
@@ -591,9 +616,10 @@ export const useVocaStore = create<VocaState>((set, get) => ({
       is_spelling_priority: Boolean(item.is_spelling_priority)
     }));
 
+    const updatedAllWbs = [newWb, ...get().allWordbooks];
     const updatedWbs = [newWb, ...get().wordbooks];
     const updatedWords = { ...get().words, [newWbId]: newWords };
-    set({ wordbooks: updatedWbs, words: updatedWords, activeWordbookId: newWbId });
+    set({ allWordbooks: updatedAllWbs, wordbooks: updatedWbs, words: updatedWords, activeWordbookId: newWbId });
 
     if (typeof window !== 'undefined') {
       const currentTId = get().tutorId;
