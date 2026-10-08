@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Word } from '@/types/database';
 import { speakText } from '@/lib/audio';
 import { Volume2, Eye, EyeOff, RotateCw, Play, Pause, ChevronLeft, ChevronRight, Sparkles, Gauge } from 'lucide-react';
@@ -14,6 +14,9 @@ interface FlashcardStudyProps {
 export const FlashcardStudy: React.FC<FlashcardStudyProps> = ({ words, onBack, onStartQuiz }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
+
+  // Initial mount ref to prevent TTS audio auto-play on first screen load
+  const isInitialMount = useRef(true);
 
   // Filters & Visibility
   const [filterMode, setFilterMode] = useState<'all' | 'spelling' | 'idiom'>('all');
@@ -37,8 +40,14 @@ export const FlashcardStudy: React.FC<FlashcardStudyProps> = ({ words, onBack, o
   const currentWord = filteredWords[currentIndex] || filteredWords[0];
   const ttsRate = speechSpeed === 'normal' ? 1.0 : 0.75;
 
-  // Auto speech on word change
+  // Auto speech on word change (skips initial mount)
   useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      setIsFlipped(false);
+      return;
+    }
+
     if (currentWord && !hideWord) {
       speakText(currentWord.word, ttsRate);
     }

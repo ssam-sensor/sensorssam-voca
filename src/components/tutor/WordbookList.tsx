@@ -5,13 +5,15 @@ import { useVocaStore } from '@/store/useVocaStore';
 import { Wordbook } from '@/types/database';
 import { WordbookFormModal } from '@/components/tutor/WordbookFormModal';
 import { WorksheetPrintModal } from '@/components/tutor/WorksheetPrintModal';
-import { Plus, Trash2, Printer, Search, Layers, ArrowRight } from 'lucide-react';
+import { WordEditModal } from '@/components/tutor/WordEditModal';
+import { Plus, Trash2, Printer, Search, Layers, ArrowRight, Edit3 } from 'lucide-react';
 
 export const WordbookList: React.FC = () => {
   const { wordbooks, words, deleteWordbook, setActiveWordbookId, setUserRole } = useVocaStore();
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [printModalWb, setPrintModalWb] = useState<Wordbook | null>(null);
+  const [editModalWb, setEditModalWb] = useState<Wordbook | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
 
   const filteredWordbooks = wordbooks.filter(wb =>
@@ -105,13 +107,22 @@ export const WordbookList: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="pt-3.5 mt-3.5 border-t border-slate-100 flex items-center justify-between gap-2">
+                <div className="pt-3.5 mt-3.5 border-t border-slate-100 flex items-center justify-between gap-1.5">
+                  <button
+                    onClick={() => setEditModalWb(wb)}
+                    className="flex-1 flex items-center justify-center gap-1 px-2.5 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-xs font-bold transition-colors"
+                    title="단어 수정 / 추가 / 삭제"
+                  >
+                    <Edit3 className="w-3.5 h-3.5 text-amber-600" />
+                    <span>단어 수정</span>
+                  </button>
+
                   <button
                     onClick={() => setPrintModalWb(wb)}
-                    className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-colors"
+                    className="flex-1 flex items-center justify-center gap-1 px-2.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-colors"
                   >
                     <Printer className="w-3.5 h-3.5 text-blue-600" />
-                    <span>시험지 인쇄</span>
+                    <span>인쇄</span>
                   </button>
 
                   <button
@@ -119,9 +130,9 @@ export const WordbookList: React.FC = () => {
                       setActiveWordbookId(wb.id);
                       setUserRole('student');
                     }}
-                    className="flex-1 sm:flex-none flex items-center justify-center gap-1 px-3 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-bold transition-colors"
+                    className="flex-1 flex items-center justify-center gap-1 px-2.5 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-bold transition-colors"
                   >
-                    <span>학생용 학습</span>
+                    <span>학습</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -133,6 +144,15 @@ export const WordbookList: React.FC = () => {
 
       {/* Form Modal */}
       <WordbookFormModal isOpen={isFormOpen} onClose={() => setIsFormOpen(false)} />
+
+      {/* Word Edit Modal */}
+      {editModalWb && (
+        <WordEditModal
+          isOpen={Boolean(editModalWb)}
+          onClose={() => setEditModalWb(null)}
+          wordbook={editModalWb}
+        />
+      )}
 
       {/* Print Modal */}
       {printModalWb && (
