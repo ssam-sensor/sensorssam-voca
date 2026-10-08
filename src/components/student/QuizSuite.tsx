@@ -219,22 +219,22 @@ export const QuizSuite: React.FC<QuizSuiteProps> = ({ wordbook, words, onFinish 
   const isSpellingPart = currentQuestion?.type === 'spelling';
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
+    <div className="max-w-2xl mx-auto space-y-4 sm:space-y-6">
       
       {/* Top Header: Progress & Abort Exit Button */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 flex items-center justify-between shadow-xs">
-        <div className="flex items-center gap-2">
-          <span className="font-bold text-sm text-slate-800">
+      <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200 flex items-center justify-between shadow-xs">
+        <div className="flex items-center gap-1.5 sm:gap-2 overflow-hidden">
+          <span className="font-bold text-xs sm:text-sm text-slate-800 truncate">
             {wordbook.title} ({wordbook.chapter})
           </span>
-          <span className="px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 text-xs font-mono font-bold">
-            문제 {currentStep + 1} / {quizQuestions.length}
+          <span className="px-2 py-0.5 sm:px-2.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 text-[10px] sm:text-xs font-mono font-bold shrink-0">
+            {currentStep + 1} / {quizQuestions.length}
           </span>
         </div>
 
         <button
           onClick={handleAbortQuiz}
-          className="p-2 rounded-xl text-slate-400 hover:text-slate-800 hover:bg-slate-100 transition-colors"
+          className="p-1.5 rounded-xl text-slate-400 hover:text-slate-800 hover:bg-slate-100 transition-colors shrink-0"
           title="시험 중단 및 홈으로 나가기"
         >
           <X className="w-5 h-5" />
@@ -243,15 +243,15 @@ export const QuizSuite: React.FC<QuizSuiteProps> = ({ wordbook, words, onFinish 
 
       {/* Clean Progress Bar */}
       <div className="space-y-1">
-        <div className="flex items-center justify-between text-xs text-slate-600 font-semibold">
+        <div className="flex items-center justify-between text-[11px] sm:text-xs text-slate-600 font-semibold">
           <span>
-            {isSpellingPart ? `Part 1: 스펠링 직쓰기 (${currentStep + 1}/${part1Count})` : `Part 2: 4지선다 뜻 선택 (${currentStep + 1 - part1Count}/${part2Count})`}
+            {isSpellingPart ? `Part 1: 스펠링 (${currentStep + 1}/${part1Count})` : `Part 2: 뜻 선택 (${currentStep + 1 - part1Count}/${part2Count})`}
           </span>
           <span className="font-mono text-blue-600 font-extrabold">
-            {Math.round(((currentStep + 1) / quizQuestions.length) * 100)}% 진행중
+            {Math.round(((currentStep + 1) / quizQuestions.length) * 100)}%
           </span>
         </div>
-        <div className="w-full h-2.5 rounded-full bg-slate-200 overflow-hidden">
+        <div className="w-full h-2 sm:h-2.5 rounded-full bg-slate-200 overflow-hidden">
           <div
             className="h-full bg-blue-600 transition-all duration-300 rounded-full"
             style={{ width: `${((currentStep + 1) / quizQuestions.length) * 100}%` }}
@@ -260,11 +260,11 @@ export const QuizSuite: React.FC<QuizSuiteProps> = ({ wordbook, words, onFinish 
       </div>
 
       {/* Main Question Card */}
-      <div className="bg-white border border-slate-200 rounded-3xl p-8 space-y-6 shadow-xl">
+      <div className="bg-white border border-slate-200 rounded-2xl sm:rounded-3xl p-4 sm:p-8 space-y-4 sm:space-y-6 shadow-lg">
         
         {/* Question Header */}
         <div className="flex items-center justify-between">
-          <span className={`px-3 py-1 rounded-full text-xs font-bold border ${
+          <span className={`px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-full text-[11px] sm:text-xs font-bold border ${
             isSpellingPart ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-blue-50 text-blue-800 border-blue-200'
           }`}>
             {isSpellingPart ? 'Part 1: 스펠링 직접 쓰기' : 'Part 2: 한글 뜻 선택'}
@@ -272,17 +272,17 @@ export const QuizSuite: React.FC<QuizSuiteProps> = ({ wordbook, words, onFinish 
 
           <button
             onClick={() => speakText(targetWord.word)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-blue-600 text-xs font-bold transition-colors"
+            className="flex items-center gap-1 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-blue-600 text-xs font-bold transition-colors border border-slate-200"
           >
-            <Volume2 className="w-4 h-4" /> 발음 듣기
+            <Volume2 className="w-4 h-4" /> 발음
           </button>
         </div>
 
         {/* Question Prompt */}
         {isSpellingPart ? (
           // Part 1: Spelling input (Korean meaning -> Type English word)
-          <div className="space-y-6 text-center py-4">
-            <h3 className="text-3xl font-extrabold text-slate-800">
+          <div className="space-y-4 sm:space-y-6 text-center py-2 sm:py-4">
+            <h3 className="text-2xl sm:text-3xl font-extrabold text-slate-800 leading-snug break-words">
               {targetWord.meaning}
             </h3>
 
@@ -292,21 +292,21 @@ export const QuizSuite: React.FC<QuizSuiteProps> = ({ wordbook, words, onFinish 
                 const isCorrect = userInputSpelling.trim().toLowerCase() === targetWord.word.trim().toLowerCase();
                 handleAnswerSubmit(userInputSpelling, isCorrect);
               }}
-              className="space-y-4 pt-2"
+              className="space-y-3 sm:space-y-4 pt-1"
             >
               <input
                 type="text"
                 autoFocus
                 value={userInputSpelling}
                 onChange={(e) => setUserInputSpelling(e.target.value)}
-                placeholder="정확한 스펠링을 입력하세요"
-                className="w-full h-14 px-5 rounded-xl bg-white border-2 border-slate-300 text-center font-bold text-xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 placeholder-slate-400"
+                placeholder="정확한 스펠링 입력"
+                className="w-full h-12 sm:h-14 px-4 rounded-xl bg-white border-2 border-slate-300 text-center font-bold text-lg sm:text-xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 placeholder-slate-400"
               />
 
               <button
                 type="submit"
                 disabled={!userInputSpelling.trim()}
-                className="w-full py-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white font-bold text-sm shadow-sm transition-all active:scale-95"
+                className="w-full py-3 sm:py-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white font-bold text-xs sm:text-sm shadow-sm transition-all active:scale-95"
               >
                 정답 제출하기
               </button>
@@ -314,19 +314,19 @@ export const QuizSuite: React.FC<QuizSuiteProps> = ({ wordbook, words, onFinish 
           </div>
         ) : (
           // Part 2: 4-Choice Meaning Selection (English word -> Select Korean meaning)
-          <div className="space-y-6 py-2">
-            <div className="text-center space-y-2">
-              <h2 className="text-4xl font-extrabold tracking-tight text-slate-800">
+          <div className="space-y-4 sm:space-y-6 py-1">
+            <div className="text-center space-y-1 sm:space-y-2">
+              <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-800 break-words">
                 {targetWord.word}
               </h2>
               {targetWord.pronunciation && (
-                <p className="text-slate-500 font-mono text-base">
+                <p className="text-slate-500 font-mono text-sm sm:text-base">
                   [{targetWord.pronunciation}]
                 </p>
               )}
             </div>
 
-            <div className="grid grid-cols-1 gap-3">
+            <div className="grid grid-cols-1 gap-2.5 sm:gap-3">
               {currentOptions.options.map((option, idx) => (
                 <button
                   key={idx}
@@ -335,7 +335,7 @@ export const QuizSuite: React.FC<QuizSuiteProps> = ({ wordbook, words, onFinish 
                     const isCorrect = idx === currentOptions.answerIndex;
                     setTimeout(() => handleAnswerSubmit(option, isCorrect), 300);
                   }}
-                  className={`p-4 rounded-2xl border text-left text-sm font-bold transition-all flex items-center justify-between ${
+                  className={`p-3.5 sm:p-4 rounded-2xl border text-left text-xs sm:text-sm font-bold transition-all flex items-center justify-between min-h-[48px] ${
                     selectedOption === idx
                       ? idx === currentOptions.answerIndex
                         ? 'bg-emerald-50 border-emerald-500 text-emerald-800'
@@ -343,8 +343,8 @@ export const QuizSuite: React.FC<QuizSuiteProps> = ({ wordbook, words, onFinish 
                       : 'bg-white border-slate-200 hover:border-blue-400 text-slate-800 shadow-xs'
                   }`}
                 >
-                  <span>{idx + 1}. {option}</span>
-                  <ChevronRight className="w-4 h-4 text-slate-400" />
+                  <span className="leading-snug">{idx + 1}. {option}</span>
+                  <ChevronRight className="w-4 h-4 text-slate-400 shrink-0 ml-2" />
                 </button>
               ))}
             </div>

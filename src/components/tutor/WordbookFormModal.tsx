@@ -218,26 +218,26 @@ export const WordbookFormModal: React.FC<WordbookFormModalProps> = ({ isOpen, on
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-      <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-4xl shadow-2xl overflow-hidden text-slate-800 flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-2 sm:p-4 animate-in fade-in duration-200">
+      <div className="bg-white border border-slate-200 rounded-2xl sm:rounded-3xl w-full max-w-4xl shadow-2xl overflow-hidden text-slate-800 flex flex-col max-h-[95vh] sm:max-h-[90vh]">
         
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/80">
+        <div className="flex items-center justify-between px-4 sm:px-6 py-3.5 sm:py-4 border-b border-slate-100 bg-slate-50/80">
           <div>
-            <h2 className="text-lg font-extrabold text-slate-800">새 단어장 챕터 등록</h2>
-            <p className="text-xs text-slate-500">교재 이미지/PDF 업로드, AI 생성, 일괄 붙여넣기, 직접 입력 지원</p>
+            <h2 className="text-base sm:text-lg font-extrabold text-slate-800">새 단어장 챕터 등록</h2>
+            <p className="text-[11px] sm:text-xs text-slate-500">교재 이미지/PDF 업로드, AI 생성, 붙여넣기 지원</p>
           </div>
           <button
             onClick={handleClose}
-            className="p-1 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition-colors"
+            className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Title & Chapter Inputs */}
-        <div className="p-6 border-b border-slate-100 bg-white space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="p-4 sm:p-6 border-b border-slate-100 bg-white space-y-3.5 sm:space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             <div>
               <label className="text-xs font-bold text-slate-700 block mb-1">
                 단어장 제목 <span className="text-blue-600">*</span>
@@ -246,8 +246,8 @@ export const WordbookFormModal: React.FC<WordbookFormModalProps> = ({ isOpen, on
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder='예: SensorSsam Voca 고등 COMPLETE, 수능 필수 숙어'
-                className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 text-slate-800 placeholder-slate-400 font-medium"
+                placeholder='예: SensorSsam Voca 고등 COMPLETE'
+                className="w-full px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-xl bg-white border border-slate-300 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 text-slate-800 placeholder-slate-400 font-medium"
               />
             </div>
             <div>
@@ -259,65 +259,65 @@ export const WordbookFormModal: React.FC<WordbookFormModalProps> = ({ isOpen, on
                 value={chapter}
                 onChange={(e) => setChapter(e.target.value)}
                 placeholder='예: DAY 15, DAY 16'
-                className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 text-slate-800 placeholder-slate-400 font-medium"
+                className="w-full px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-xl bg-white border border-slate-300 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 text-slate-800 placeholder-slate-400 font-medium"
               />
             </div>
           </div>
 
           {/* Navigation Tabs */}
-          <div className="flex border-b border-slate-200 pt-2 gap-1 overflow-x-auto scrollbar-none">
+          <div className="flex border-b border-slate-200 pt-1.5 gap-1 overflow-x-auto scrollbar-none">
             <button
               onClick={() => setActiveTab('ocr')}
-              className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold border-b-2 transition-colors shrink-0 ${
+              className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 text-xs font-bold border-b-2 transition-colors shrink-0 ${
                 activeTab === 'ocr'
                   ? 'border-blue-600 text-blue-600 bg-blue-50/60 rounded-t-xl'
                   : 'border-transparent text-slate-500 hover:text-slate-800'
               }`}
             >
-              <ImageIcon className="w-4 h-4 text-blue-600" />
-              <span>교재 이미지/PDF 업로드 (Gemini AI)</span>
+              <ImageIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-600 shrink-0" />
+              <span>교재 이미지/PDF 업로드</span>
             </button>
 
             <button
               onClick={() => setActiveTab('ai')}
-              className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold border-b-2 transition-colors shrink-0 ${
+              className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 text-xs font-bold border-b-2 transition-colors shrink-0 ${
                 activeTab === 'ai'
                   ? 'border-blue-600 text-blue-600 bg-blue-50/60 rounded-t-xl'
                   : 'border-transparent text-slate-500 hover:text-slate-800'
               }`}
             >
-              <Sparkles className="w-4 h-4 text-amber-600" />
-              <span>AI 주제별 자동 생성</span>
+              <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-600 shrink-0" />
+              <span>AI 주제별 생성</span>
             </button>
 
             <button
               onClick={() => setActiveTab('batch')}
-              className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold border-b-2 transition-colors shrink-0 ${
+              className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 text-xs font-bold border-b-2 transition-colors shrink-0 ${
                 activeTab === 'batch'
                   ? 'border-blue-600 text-blue-600 bg-blue-50/60 rounded-t-xl'
                   : 'border-transparent text-slate-500 hover:text-slate-800'
               }`}
             >
-              <FileText className="w-4 h-4" />
-              <span>일괄 붙여넣기 (TSV/CSV)</span>
+              <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+              <span>붙여넣기</span>
             </button>
 
             <button
               onClick={() => setActiveTab('manual')}
-              className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold border-b-2 transition-colors shrink-0 ${
+              className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 text-xs font-bold border-b-2 transition-colors shrink-0 ${
                 activeTab === 'manual'
                   ? 'border-blue-600 text-blue-600 bg-blue-50/60 rounded-t-xl'
                   : 'border-transparent text-slate-500 hover:text-slate-800'
               }`}
             >
-              <Plus className="w-4 h-4" />
+              <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
               <span>직접 입력</span>
             </button>
           </div>
         </div>
 
         {/* Tab Content Area */}
-        <div className="p-6 overflow-y-auto space-y-6 flex-1 bg-slate-50/40">
+        <div className="p-4 sm:p-6 overflow-y-auto space-y-4 sm:space-y-6 flex-1 bg-slate-50/40">
 
           {/* TAB 1: Multimodal Book Image/PDF Upload OCR */}
           {activeTab === 'ocr' && (

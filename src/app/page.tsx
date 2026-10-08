@@ -35,12 +35,12 @@ export default function Home() {
 
       {/* Protected Main Workspace View */}
       {isVerifiedWithInviteCode ? (
-        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+        <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8 space-y-6 sm:space-y-8">
           
           {/* Role Banner / Switcher Bar */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-2xl bg-white border border-slate-200 shadow-sm">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-2xl bg-white border border-slate-200 shadow-xs">
             <div className="flex items-center gap-3">
-              <div className={`p-2 rounded-xl border ${
+              <div className={`p-2 rounded-xl border shrink-0 ${
                 userRole === 'tutor'
                   ? 'bg-blue-50 border-blue-200 text-blue-700'
                   : 'bg-emerald-50 border-emerald-200 text-emerald-700'
@@ -58,7 +58,7 @@ export default function Home() {
                     ACTIVE
                   </span>
                 </div>
-                <p className="text-xs text-slate-500 font-medium">
+                <p className="text-xs text-slate-500 font-medium mt-0.5">
                   {userRole === 'tutor'
                     ? '단어장 챕터 등록, AI 이미지/PDF 교재 추출, 시험지 인쇄 및 학생 성적 관리를 담당합니다.'
                     : '등록된 챕터를 플래시카드로 학습하고 AI 맞춤 시험을 진행합니다.'}
@@ -68,10 +68,10 @@ export default function Home() {
 
             {/* Tutor Mode Sub-Tabs */}
             {userRole === 'tutor' && (
-              <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-bold">
+              <div className="flex w-full sm:w-auto bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-bold">
                 <button
                   onClick={() => setTutorTab('wordbooks')}
-                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg transition-colors ${
+                  className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-lg transition-colors ${
                     tutorTab === 'wordbooks'
                       ? 'bg-blue-600 text-white shadow-xs'
                       : 'text-slate-600 hover:text-slate-800'
@@ -83,7 +83,7 @@ export default function Home() {
 
                 <button
                   onClick={() => setTutorTab('students')}
-                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg transition-colors ${
+                  className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-lg transition-colors ${
                     tutorTab === 'students'
                       ? 'bg-blue-600 text-white shadow-xs'
                       : 'text-slate-600 hover:text-slate-800'

@@ -46,6 +46,12 @@ interface VocaState {
   resetToSampleData: () => void;
 }
 
+// Helper to check if a string is a valid UUID
+const isUuid = (id?: string | null): boolean => {
+  if (!id) return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+};
+
 export const useVocaStore = create<VocaState>((set, get) => ({
   userRole: 'student', // default student view, easily toggleable to 'tutor'
   userEmail: 'demo_user@sensorssam.com',
@@ -84,8 +90,10 @@ export const useVocaStore = create<VocaState>((set, get) => ({
       try {
         const { data: userData } = await client.auth.getUser();
         if (userData?.user) {
+          const userId = userData.user.id;
+          set({ tutorId: userId, studentId: userId });
           await client.from('profiles').upsert({
-            id: userData.user.id,
+            id: userId,
             email: userData.user.email || 'demo_user@sensorssam.com',
             role,
             is_verified: true,
@@ -215,14 +223,23 @@ export const useVocaStore = create<VocaState>((set, get) => ({
       try {
         const { data: authData } = await client.auth.getUser();
         if (authData?.user) {
-          set({ userEmail: authData.user.email || get().userEmail });
+          const userId = authData.user.id;
+          set({ userEmail: authData.user.email || get().userEmail, tutorId: userId, studentId: userId });
           const { data: profile } = await client
             .from('profiles')
             .select('*')
-            .eq('id', authData.user.id)
+            .eq('id', userId)
             .single();
 
-          if (profile) {
+          if (!profile) {
+            await client.from('profiles').upsert({
+              id: userId,
+              email: authData.user.email || get().userEmail,
+              role: get().userRole,
+              is_verified: true,
+              created_at: new Date().toISOString()
+            });
+          } else {
             if (profile.role) set({ userRole: profile.role });
             if (profile.is_verified) {
               set({ isVerifiedWithInviteCode: true });
@@ -237,34 +254,65 @@ export const useVocaStore = create<VocaState>((set, get) => ({
           ? linkData.filter(l => l.student_id === get().studentId).map(l => l.tutor_id)
           : [get().tutorId];
 
-        // Fetch wordbooks created by ANY of the linked tutors (N:M mapping)
+        // Fetch wordbooks created in DB
         const { data: wbData, error: wbErr } = await client
           .from('wordbooks')
           .select('*')
           .order('created_at', { ascending: false });
         
-        if (!wbErr && wbData && wbData.length > 0) {
-          const wordsMap: Record<string, Word[]> = {};
-          
-          for (const wb of wbData) {
-            const { data: wData } = await client.from('words').select('*').eq('wordbook_id', wb.id);
-            wordsMap[wb.id] = wData || [];
+        if (!wbErr && wbData) {
+          if (wbData.length > 0) {
+            const wordsMap: Record<string, Word[]> = {};
+            
+            for (const wb of wbData) {
+              const { data: wData } = await client.from('words').select('*').eq('wordbook_id', wb.id);
+              wordsMap[wb.id] = wData || [];
+            }
+
+            // Fetch quiz results & incorrect notes
+            const { data: qrData } = await client.from('quiz_results').select('*').order('created_at', { ascending: false });
+            const { data: incData } = await client.from('incorrect_notes').select('*, word:words(*)');
+
+            set({
+              wordbooks: wbData,
+              words: wordsMap,
+              quizResults: qrData || [],
+              incorrectNotes: incData || [],
+              activeWordbookId: wbData[0]?.id || null,
+              linkedTutorIds: linkedTutors,
+              isLoading: false
+            });
+
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('vocat_local_wordbooks', JSON.stringify(wbData));
+              localStorage.setItem('vocat_local_words', JSON.stringify(wordsMap));
+            }
+            return;
+          } else {
+            // DB exists but is empty -> check if local storage has wordbooks or seed sample data
+            const storedWb = typeof window !== 'undefined' ? localStorage.getItem('vocat_local_wordbooks') : null;
+            const storedWords = typeof window !== 'undefined' ? localStorage.getItem('vocat_local_words') : null;
+
+            if (storedWb && storedWords) {
+              const wbList: Wordbook[] = JSON.parse(storedWb);
+              const wordsObj: Record<string, Word[]> = JSON.parse(storedWords);
+              set({
+                wordbooks: wbList,
+                words: wordsObj,
+                activeWordbookId: wbList[0]?.id || null,
+                isLoading: false
+              });
+              return;
+            } else {
+              set({
+                wordbooks: SAMPLE_WORDBOOKS,
+                words: SAMPLE_WORDS,
+                activeWordbookId: SAMPLE_WORDBOOKS[0]?.id || null,
+                isLoading: false
+              });
+              return;
+            }
           }
-
-          // Fetch quiz results & incorrect notes
-          const { data: qrData } = await client.from('quiz_results').select('*').order('created_at', { ascending: false });
-          const { data: incData } = await client.from('incorrect_notes').select('*, word:words(*)');
-
-          set({
-            wordbooks: wbData,
-            words: wordsMap,
-            quizResults: qrData || [],
-            incorrectNotes: incData || [],
-            activeWordbookId: wbData[0]?.id || null,
-            linkedTutorIds: linkedTutors,
-            isLoading: false
-          });
-          return;
         }
       } catch (err) {
         console.warn('Supabase fetch error, falling back to local state:', err);
@@ -343,6 +391,72 @@ export const useVocaStore = create<VocaState>((set, get) => ({
   },
 
   addWordbookWithWords: async (title, chapter, batchWords) => {
+    const client = getSupabaseClient();
+    const currentTutorId = get().tutorId;
+    const dbTutorId = isUuid(currentTutorId) ? currentTutorId : null;
+
+    if (client) {
+      try {
+        const { data: insertedWb, error: wbErr } = await client
+          .from('wordbooks')
+          .insert({
+            ...(dbTutorId ? { tutor_id: dbTutorId } : {}),
+            title,
+            chapter
+          })
+          .select()
+          .single();
+
+        if (wbErr) {
+          console.error('Supabase wordbook insert error:', wbErr);
+        }
+
+        if (!wbErr && insertedWb) {
+          const dbWords = batchWords.map(item => ({
+            wordbook_id: insertedWb.id,
+            word: item.word,
+            pronunciation: item.pronunciation || null,
+            pos: item.pos || null,
+            meaning: item.meaning,
+            example_sentence: item.example_sentence || null,
+            example_translation: item.example_translation || null,
+            is_idiom: Boolean(item.is_idiom),
+            is_spelling_priority: Boolean(item.is_spelling_priority)
+          }));
+
+          const { data: insertedWords, error: wordsErr } = await client
+            .from('words')
+            .insert(dbWords)
+            .select();
+
+          if (wordsErr) {
+            console.error('Supabase words insert error:', wordsErr);
+          }
+
+          const newWbObj: Wordbook = {
+            ...insertedWb,
+            tutor_name: 'SensorSsam (대표 튜터)',
+            words_count: (insertedWords || []).length
+          };
+
+          const updatedWbs = [newWbObj, ...get().wordbooks];
+          const updatedWords = { ...get().words, [insertedWb.id]: insertedWords || [] };
+
+          set({ wordbooks: updatedWbs, words: updatedWords, activeWordbookId: insertedWb.id });
+
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('vocat_local_wordbooks', JSON.stringify(updatedWbs));
+            localStorage.setItem('vocat_local_words', JSON.stringify(updatedWords));
+          }
+
+          return newWbObj;
+        }
+      } catch (err) {
+        console.warn('Failed inserting to Supabase, falling back to local state:', err);
+      }
+    }
+
+    // Local Fallback
     const newWbId = `wb-${Date.now()}`;
     const newWb: Wordbook = {
       id: newWbId,
@@ -367,42 +481,6 @@ export const useVocaStore = create<VocaState>((set, get) => ({
       is_spelling_priority: Boolean(item.is_spelling_priority)
     }));
 
-    const client = getSupabaseClient();
-    if (client) {
-      try {
-        const { data: insertedWb, error: wbErr } = await client
-          .from('wordbooks')
-          .insert({ tutor_id: get().tutorId, title, chapter })
-          .select()
-          .single();
-
-        if (!wbErr && insertedWb) {
-          const dbWords = batchWords.map(item => ({
-            wordbook_id: insertedWb.id,
-            word: item.word,
-            pronunciation: item.pronunciation || null,
-            pos: item.pos || null,
-            meaning: item.meaning,
-            example_sentence: item.example_sentence || null,
-            example_translation: item.example_translation || null,
-            is_idiom: Boolean(item.is_idiom),
-            is_spelling_priority: Boolean(item.is_spelling_priority)
-          }));
-
-          const { data: insertedWords } = await client.from('words').insert(dbWords).select();
-
-          const updatedWbs = [{ ...insertedWb, tutor_name: 'SensorSsam (대표 튜터)' }, ...get().wordbooks];
-          const updatedWords = { ...get().words, [insertedWb.id]: insertedWords || [] };
-
-          set({ wordbooks: updatedWbs, words: updatedWords, activeWordbookId: insertedWb.id });
-          return insertedWb;
-        }
-      } catch (err) {
-        console.warn('Failed inserting to Supabase, using local:', err);
-      }
-    }
-
-    // Local Fallback
     const updatedWbs = [newWb, ...get().wordbooks];
     const updatedWords = { ...get().words, [newWbId]: newWords };
     set({ wordbooks: updatedWbs, words: updatedWords, activeWordbookId: newWbId });
@@ -417,9 +495,10 @@ export const useVocaStore = create<VocaState>((set, get) => ({
 
   deleteWordbook: async (wordbookId) => {
     const client = getSupabaseClient();
-    if (client) {
+    if (client && isUuid(wordbookId)) {
       try {
-        await client.from('wordbooks').delete().eq('id', wordbookId);
+        const { error } = await client.from('wordbooks').delete().eq('id', wordbookId);
+        if (error) console.error('Supabase delete wordbook error:', error);
       } catch (err) {
         console.warn('Error deleting from Supabase:', err);
       }
@@ -446,16 +525,20 @@ export const useVocaStore = create<VocaState>((set, get) => ({
     };
 
     const client = getSupabaseClient();
-    if (client) {
+    if (client && isUuid(wordbookId)) {
       try {
         const { data, error } = await client.from('words').insert({
           wordbook_id: wordbookId,
           ...wordData
         }).select().single();
+        if (error) console.error('Supabase add word error:', error);
         if (!error && data) {
           const currentList = get().words[wordbookId] || [];
           const updatedMap = { ...get().words, [wordbookId]: [...currentList, data] };
           set({ words: updatedMap });
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('vocat_local_words', JSON.stringify(updatedMap));
+          }
           return data;
         }
       } catch (err) {
@@ -475,9 +558,10 @@ export const useVocaStore = create<VocaState>((set, get) => ({
 
   deleteWord: async (wordId, wordbookId) => {
     const client = getSupabaseClient();
-    if (client) {
+    if (client && isUuid(wordId)) {
       try {
-        await client.from('words').delete().eq('id', wordId);
+        const { error } = await client.from('words').delete().eq('id', wordId);
+        if (error) console.error('Supabase delete word error:', error);
       } catch (err) {
         console.warn('Error deleting word:', err);
       }
@@ -495,9 +579,19 @@ export const useVocaStore = create<VocaState>((set, get) => ({
 
   updateWord: async (word) => {
     const client = getSupabaseClient();
-    if (client) {
+    if (client && isUuid(word.id)) {
       try {
-        await client.from('words').update(word).eq('id', word.id);
+        const { error } = await client.from('words').update({
+          word: word.word,
+          pronunciation: word.pronunciation,
+          pos: word.pos,
+          meaning: word.meaning,
+          example_sentence: word.example_sentence,
+          example_translation: word.example_translation,
+          is_idiom: word.is_idiom,
+          is_spelling_priority: word.is_spelling_priority
+        }).eq('id', word.id);
+        if (error) console.error('Supabase update word error:', error);
       } catch (err) {
         console.warn('Error updating word:', err);
       }
@@ -562,18 +656,24 @@ export const useVocaStore = create<VocaState>((set, get) => ({
     set({ quizResults: updatedResults, incorrectNotes: currentNotes });
 
     const client = getSupabaseClient();
-    if (client) {
+    const dbStudentId = isUuid(get().studentId) ? get().studentId : null;
+    const dbWordbookId = isUuid(wordbookId) ? wordbookId : null;
+
+    if (client && dbWordbookId) {
       try {
-        await client.from('quiz_results').insert({
-          student_id: get().studentId,
-          wordbook_id: wordbookId,
+        const { error: qrErr } = await client.from('quiz_results').insert({
+          ...(dbStudentId ? { student_id: dbStudentId } : {}),
+          wordbook_id: dbWordbookId,
           total_score: totalScore,
           max_score: maxScore
         });
 
+        if (qrErr) console.error('Supabase recordQuizResult error:', qrErr);
+
         for (const item of wrongWordIds) {
+          if (!isUuid(item.wordId)) continue;
           const existing = get().incorrectNotes.find(n => n.word_id === item.wordId);
-          if (existing && existing.id.length > 20) { // Database UUID
+          if (existing && isUuid(existing.id)) {
             await client.from('incorrect_notes').update({
               wrong_count: existing.wrong_count,
               last_wrong_answer: item.wrongAnswer,
@@ -582,7 +682,7 @@ export const useVocaStore = create<VocaState>((set, get) => ({
             }).eq('id', existing.id);
           } else {
             await client.from('incorrect_notes').insert({
-              student_id: get().studentId,
+              ...(dbStudentId ? { student_id: dbStudentId } : {}),
               word_id: item.wordId,
               wrong_count: 1,
               last_wrong_answer: item.wrongAnswer,
@@ -606,7 +706,7 @@ export const useVocaStore = create<VocaState>((set, get) => ({
     set({ incorrectNotes: updatedNotes });
 
     const client = getSupabaseClient();
-    if (client && noteId.length > 20) {
+    if (client && isUuid(noteId)) {
       try {
         await client.from('incorrect_notes').update({ is_resolved: true }).eq('id', noteId);
       } catch (err) {
