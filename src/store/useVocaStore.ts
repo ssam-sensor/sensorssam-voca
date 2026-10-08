@@ -70,12 +70,9 @@ export const useVocaStore = create<VocaState>((set, get) => ({
   tutorId: '',
   studentId: '',
   availableTutors: [
-    { id: 'tutor-sensorssam', name: 'SensorSsam (대표 튜터)', title: 'AI 1:1 맞춤 어휘', avatarBg: 'bg-blue-600' },
-    { id: 'tutor-lee', name: '이튜터 선생님', title: '수능 & 어휘 전문', avatarBg: 'bg-indigo-600' },
-    { id: 'tutor-park', name: '박튜터 선생님', title: '내신 & 수행평가', avatarBg: 'bg-emerald-600' },
-    { id: 'tutor-choi', name: '최튜터 선생님', title: '기초 & 숙어 전문', avatarBg: 'bg-amber-600' }
+    { id: 'tutor-sensorssam', name: 'SensorSsam (대표 튜터)', title: 'AI 1:1 맞춤 어휘', avatarBg: 'bg-blue-600' }
   ],
-  linkedTutorIds: ['tutor-sensorssam', 'tutor-lee', 'tutor-park', 'tutor-choi'],
+  linkedTutorIds: ['tutor-sensorssam'],
   linkedStudentIds: [],
   isVerifiedWithInviteCode: false,
 
@@ -342,29 +339,39 @@ export const useVocaStore = create<VocaState>((set, get) => ({
           }
 
           // Fetch registered tutors from profiles table where role = 'tutor'
+          const defaultTutor = { id: 'tutor-sensorssam', name: 'SensorSsam (대표 튜터)', title: 'AI 1:1 맞춤 어휘', avatarBg: 'bg-blue-600' };
           try {
             const { data: tutorProfiles } = await client
               .from('profiles')
               .select('*')
               .eq('role', 'tutor');
 
+            let fullTutorList = [defaultTutor];
             if (tutorProfiles && tutorProfiles.length > 0) {
-              const mappedTutors = tutorProfiles.map(p => ({
-                id: p.id,
-                name: p.email ? `${p.email.split('@')[0]} (등록 튜터)` : '등록 튜터',
-                title: p.email || '등록된 튜터 계정',
-                avatarBg: 'bg-indigo-600'
-              }));
+              const mappedTutors = tutorProfiles.map(p => {
+                const emailPrefix = p.email ? p.email.split('@')[0] : '';
+                const name = p.name || (emailPrefix ? `${emailPrefix} (등록 튜터)` : '등록 튜터');
+                return {
+                  id: p.id,
+                  name: name,
+                  title: p.email || '등록된 튜터 계정',
+                  avatarBg: 'bg-indigo-600'
+                };
+              });
 
               const hasDefault = mappedTutors.some(t => t.id === 'tutor-sensorssam');
-              const fullTutorList = hasDefault ? mappedTutors : [
-                { id: 'tutor-sensorssam', name: 'SensorSsam (대표 튜터)', title: 'AI 1:1 맞춤 어휘', avatarBg: 'bg-blue-600' },
-                ...mappedTutors
-              ];
-              set({ availableTutors: fullTutorList });
+              fullTutorList = hasDefault ? mappedTutors : [defaultTutor, ...mappedTutors];
             }
+            set({ availableTutors: fullTutorList });
+
+            // Ensure linkedTutorIds only contains valid tutor IDs from fullTutorList
+            const validIds = fullTutorList.map(t => t.id);
+            const currentLinked = get().linkedTutorIds;
+            const cleanedLinked = currentLinked.filter(id => validIds.includes(id));
+            set({ linkedTutorIds: cleanedLinked.length > 0 ? cleanedLinked : validIds });
           } catch (e) {
             console.warn('Failed fetching registered tutor profiles:', e);
+            set({ availableTutors: [defaultTutor], linkedTutorIds: ['tutor-sensorssam'] });
           }
 
           // Query ALL wordbooks in Supabase so tutors share all wordbooks with each other!
