@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { Wordbook, Word, QuizResult, IncorrectNote, UserRole, SettingsConfig, VocaBatchItem } from '@/types/database';
 import { SAMPLE_WORDBOOKS, SAMPLE_WORDS } from '@/lib/sample-data';
 import { getSupabaseClient } from '@/lib/supabase';
+import { maskEmail, maskName } from '@/utils/masking';
 
 interface VocaState {
   // Auth & Profile
@@ -69,10 +70,8 @@ export const useVocaStore = create<VocaState>((set, get) => ({
   userEmail: '',
   tutorId: '',
   studentId: '',
-  availableTutors: [
-    { id: 'tutor-sensorssam', name: 'SensorSsam (대표 튜터)', title: 'AI 1:1 맞춤 어휘', avatarBg: 'bg-blue-600' }
-  ],
-  linkedTutorIds: ['tutor-sensorssam'],
+  availableTutors: [],
+  linkedTutorIds: [],
   linkedStudentIds: [],
   isVerifiedWithInviteCode: false,
 
@@ -137,7 +136,7 @@ export const useVocaStore = create<VocaState>((set, get) => ({
       localStorage.setItem('vocat_user_role', role);
     }
 
-    // Upsert user profile to Supabase if client is active
+    // Check user profile in Supabase: insert only if new, preserve role if existing
     const client = getSupabaseClient();
     if (client) {
       try {
@@ -145,20 +144,27 @@ export const useVocaStore = create<VocaState>((set, get) => ({
         if (userData?.user) {
           const userId = userData.user.id;
           set({ tutorId: userId, studentId: userId, userEmail: userData.user.email || '' });
-          await client.from('profiles').upsert({
-            id: userId,
-            email: userData.user.email || '',
-            role,
-            is_verified: true,
-            created_at: new Date().toISOString()
-          });
+          
+          const { data: existingProfile } = await client.from('profiles').select('*').eq('id', userId).single();
+          if (!existingProfile) {
+            await client.from('profiles').insert({
+              id: userId,
+              email: userData.user.email || '',
+              role,
+              is_verified: true,
+              created_at: new Date().toISOString()
+            });
+            set({ accountRole: role, userRole: role });
+          } else {
+            set({ accountRole: existingProfile.role, userRole: existingProfile.role });
+          }
         }
       } catch (err) {
-        console.warn('Supabase profile upsert error:', err);
+        console.warn('Supabase profile check/insert error:', err);
       }
     }
 
-    set({ isVerifiedWithInviteCode: true, userRole: role });
+    set({ isVerifiedWithInviteCode: true });
     return { success: true };
   },
 
@@ -281,19 +287,17 @@ export const useVocaStore = create<VocaState>((set, get) => ({
               userEmail: session.user.email || '',
               tutorId: userId,
               studentId: userId,
-              isVerifiedWithInviteCode: true
             });
-            if (typeof window !== 'undefined') {
-              localStorage.setItem('vocat_invite_verified', 'true');
-            }
             try {
-              await client.from('profiles').upsert({
-                id: userId,
-                email: session.user.email || '',
-                role: get().userRole,
-                is_verified: true,
-                created_at: new Date().toISOString()
-              });
+              const { data: profile } = await client.from('profiles').select('*').eq('id', userId).single();
+              if (profile) {
+                set({
+                  accountRole: profile.role,
+                  userRole: profile.role,
+                  isVerifiedWithInviteCode: true
+                });
+                if (typeof window !== 'undefined') localStorage.setItem('vocat_invite_verified', 'true');
+              }
             } catch (e) {
               console.warn('Profile sync error:', e);
             }
@@ -311,7 +315,6 @@ export const useVocaStore = create<VocaState>((set, get) => ({
             userEmail: authData.user.email || '',
             tutorId: userId,
             studentId: userId,
-            isVerifiedWithInviteCode: true
           });
 
           const { data: profile } = await client
@@ -320,16 +323,7 @@ export const useVocaStore = create<VocaState>((set, get) => ({
             .eq('id', userId)
             .single();
 
-          if (!profile) {
-            await client.from('profiles').upsert({
-              id: userId,
-              email: authData.user.email || '',
-              role: get().userRole,
-              is_verified: true,
-              created_at: new Date().toISOString()
-            });
-            set({ accountRole: get().userRole });
-          } else {
+          if (profile) {
             if (profile.role) set({ accountRole: profile.role, userRole: profile.role });
             if (profile.is_verified) {
               set({ isVerifiedWithInviteCode: true });
@@ -354,7 +348,6 @@ export const useVocaStore = create<VocaState>((set, get) => ({
         }
 
         // 1. Fetch registered tutors from profiles table (excluding legacy dummy tutors)
-        const defaultTutor = { id: 'tutor-sensorssam', name: 'SensorSsam (대표 튜터)', title: 'AI 1:1 맞춤 어휘', avatarBg: 'bg-blue-600' };
         try {
           const { data: tutorProfiles } = await client
             .from('profiles')
@@ -367,31 +360,25 @@ export const useVocaStore = create<VocaState>((set, get) => ({
                    !str.includes('tutor-lee') && !str.includes('tutor-park') && !str.includes('tutor-choi');
           });
 
-          let fullTutorList = [defaultTutor];
           if (realTutors.length > 0) {
-            const mappedTutors = realTutors.map(p => {
-              const emailPrefix = p.email ? p.email.split('@')[0] : '';
-              const name = p.name || (emailPrefix ? `${emailPrefix} (등록 튜터)` : '등록 튜터');
-              return {
-                id: p.id,
-                name: name,
-                title: p.email || '등록된 튜터 계정',
-                avatarBg: 'bg-indigo-600'
-              };
-            });
+            const mappedTutors = realTutors.map(p => ({
+              id: p.id,
+              name: maskName(p.name, p.email),
+              title: maskEmail(p.email),
+              avatarBg: 'bg-indigo-600'
+            }));
+            set({ availableTutors: mappedTutors });
 
-            const hasDefault = mappedTutors.some(t => t.id === 'tutor-sensorssam');
-            fullTutorList = hasDefault ? mappedTutors : [defaultTutor, ...mappedTutors];
+            const validIds = mappedTutors.map(t => t.id);
+            const currentLinked = get().linkedTutorIds;
+            const cleanedLinked = currentLinked.filter(id => validIds.includes(id));
+            set({ linkedTutorIds: cleanedLinked.length > 0 ? cleanedLinked : validIds });
+          } else {
+            set({ availableTutors: [], linkedTutorIds: [] });
           }
-          set({ availableTutors: fullTutorList });
-
-          const validIds = fullTutorList.map(t => t.id);
-          const currentLinked = get().linkedTutorIds;
-          const cleanedLinked = currentLinked.filter(id => validIds.includes(id));
-          set({ linkedTutorIds: cleanedLinked.length > 0 ? cleanedLinked : validIds });
         } catch (e) {
           console.warn('Failed fetching registered tutor profiles:', e);
-          set({ availableTutors: [defaultTutor], linkedTutorIds: ['tutor-sensorssam'] });
+          set({ availableTutors: [], linkedTutorIds: [] });
         }
 
         // 2. Query ALL wordbooks in Supabase & sanitize legacy tutor names

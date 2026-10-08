@@ -114,28 +114,36 @@ export const StudentDashboard: React.FC = () => {
 
         {/* Tutor Checkboxes Carousel */}
         <div className="flex flex-wrap items-center gap-2 pt-1">
-          {availableTutors.map((tutor) => {
-            const isChecked = linkedTutorIds.includes(tutor.id);
-            return (
-              <button
-                key={tutor.id}
-                onClick={() => toggleLinkedTutorId(tutor.id)}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
-                  isChecked
-                    ? 'bg-indigo-50 border-indigo-400 text-indigo-900 shadow-2xs ring-1 ring-indigo-300'
-                    : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100'
-                }`}
-              >
-                {isChecked ? (
-                  <CheckSquare className="w-4 h-4 text-indigo-600 shrink-0" />
-                ) : (
-                  <Square className="w-4 h-4 text-slate-400 shrink-0" />
-                )}
-                <span>{tutor.name}</span>
-                <span className="text-[10px] font-normal text-slate-400 font-mono">[{tutor.title}]</span>
-              </button>
-            );
-          })}
+          {availableTutors.length === 0 ? (
+            <p className="text-xs text-slate-400 font-medium py-1 italic">
+              현재 가입된 튜터 계정이 없습니다. (튜터로 회원가입 시 목록에 표시됩니다)
+            </p>
+          ) : (
+            availableTutors.map((tutor) => {
+              const isChecked = linkedTutorIds.includes(tutor.id);
+              return (
+                <button
+                  key={tutor.id}
+                  onClick={() => toggleLinkedTutorId(tutor.id)}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
+                    isChecked
+                      ? 'bg-indigo-50 border-indigo-400 text-indigo-900 shadow-2xs ring-1 ring-indigo-300'
+                      : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100'
+                  }`}
+                >
+                  {isChecked ? (
+                    <CheckSquare className="w-4 h-4 text-indigo-600 shrink-0" />
+                  ) : (
+                    <Square className="w-4 h-4 text-slate-400 shrink-0" />
+                  )}
+                  <span>{tutor.name}</span>
+                  {tutor.title && (
+                    <span className="text-[10px] font-normal text-slate-400 font-mono">({tutor.title})</span>
+                  )}
+                </button>
+              );
+            })
+          )}
         </div>
       </div>
 
