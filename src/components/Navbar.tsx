@@ -5,7 +5,7 @@ import { useVocaStore } from '@/store/useVocaStore';
 import { BookOpen, User, GraduationCap, LogIn, ShieldCheck } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
-  const { userRole, setUserRole, userEmail, signInWithGoogle, signOutUser } = useVocaStore();
+  const { accountRole, userRole, setUserRole, userEmail, signInWithGoogle, signOutUser } = useVocaStore();
 
   const isLoggedIn = Boolean(userEmail);
 
@@ -53,8 +53,8 @@ export const Navbar: React.FC = () => {
         <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200 shadow-inner shrink-0">
           <button
             onClick={() => {
-              if (userRole === 'student' && isLoggedIn) {
-                alert('학생 계정은 튜터 전용 화면에 진입할 수 없습니다.');
+              if (accountRole === 'student' && isLoggedIn) {
+                alert('학생 전용 계정은 튜터 관리 화면에 진입할 수 없습니다.');
                 return;
               }
               setUserRole('tutor');

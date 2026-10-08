@@ -5,7 +5,8 @@ import { getSupabaseClient } from '@/lib/supabase';
 
 interface VocaState {
   // Auth & Profile
-  userRole: UserRole;
+  accountRole: UserRole; // Official registered profile role (tutor or student)
+  userRole: UserRole;    // Active view mode
   userEmail: string;
   tutorId: string;
   studentId: string;
@@ -26,10 +27,12 @@ interface VocaState {
   loadSettings: () => void;
 
   // Wordbooks & Words
+  allWordbooks: Wordbook[];
   wordbooks: Wordbook[];
   words: Record<string, Word[]>; // wordbook_id -> Word[]
   activeWordbookId: string | null;
   setActiveWordbookId: (id: string | null) => void;
+  filterWordbooksForStudent: (selectedTutorIds?: string[]) => void;
 
   // Data Loading & Syncing
   isLoading: boolean;
@@ -61,6 +64,7 @@ const getWordsKey = (tutorId?: string | null) => `vocat_local_words_${tutorId ||
 let authListenerSubscribed = false;
 
 export const useVocaStore = create<VocaState>((set, get) => ({
+  accountRole: 'student',
   userRole: 'student',
   userEmail: '',
   tutorId: '',
@@ -83,11 +87,39 @@ export const useVocaStore = create<VocaState>((set, get) => ({
     if (typeof window !== 'undefined') {
       localStorage.setItem('vocat_linked_tutor_ids', JSON.stringify(updated));
     }
+    // Instantly re-filter wordbooks for student view!
+    get().filterWordbooksForStudent(updated);
+  },
+
+  allWordbooks: [],
+  wordbooks: [],
+
+  filterWordbooksForStudent: (selectedTutorIds?: string[]) => {
+    const selectedTutors = selectedTutorIds || get().linkedTutorIds;
+    const allWbs = get().allWordbooks;
+    const userId = get().studentId;
+
+    let filtered = allWbs;
+    if (get().userRole === 'student') {
+      filtered = allWbs.filter(wb => {
+        if (wb.is_student_created || wb.creator_role === 'student' || wb.tutor_id === userId) return true;
+        if (wb.tutor_id && selectedTutors.includes(wb.tutor_id)) return true;
+        if (wb.tutor_name && selectedTutors.some(tId => (wb.tutor_name || '').toLowerCase().includes(tId.toLowerCase()))) return true;
+        if (selectedTutors.includes('tutor-sensorssam') && (!wb.tutor_id || wb.tutor_name?.includes('SensorSsam'))) return true;
+        return false;
+      });
+    }
+
+    set({
+      wordbooks: filtered,
+      activeWordbookId: filtered[0]?.id || null
+    });
   },
 
   setUserRole: (role) => {
     set({ userRole: role });
     if (typeof window !== 'undefined') localStorage.setItem('vocat_user_role', role);
+    get().filterWordbooksForStudent();
   },
   setUserEmail: (email) => set({ userEmail: email }),
 
@@ -218,7 +250,6 @@ export const useVocaStore = create<VocaState>((set, get) => ({
     });
   },
 
-  wordbooks: [],
   words: {},
   activeWordbookId: null,
   setActiveWordbookId: (id) => set({ activeWordbookId: id }),
@@ -301,8 +332,9 @@ export const useVocaStore = create<VocaState>((set, get) => ({
               is_verified: true,
               created_at: new Date().toISOString()
             });
+            set({ accountRole: get().userRole });
           } else {
-            if (profile.role) set({ userRole: profile.role });
+            if (profile.role) set({ accountRole: profile.role, userRole: profile.role });
             if (profile.is_verified) {
               set({ isVerifiedWithInviteCode: true });
               if (typeof window !== 'undefined') localStorage.setItem('vocat_invite_verified', 'true');
@@ -342,26 +374,28 @@ export const useVocaStore = create<VocaState>((set, get) => ({
             .order('created_at', { ascending: false });
 
           if (!wbErr && wbData) {
-            let activeWbs: Wordbook[] = (wbData || []).map(wb => ({
+            let rawWbs: Wordbook[] = (wbData || []).map(wb => ({
               ...wb,
               tutor_name: wb.tutor_name || (wb.is_student_created ? '학생 (개인 단어장)' : 'SensorSsam (대표 튜터)')
             }));
 
-            // Filter for student mode: ONLY display wordbooks of checked tutors + student's own personal wordbooks!
+            set({ allWordbooks: rawWbs });
+
+            // Filter for student mode vs tutor mode
+            let activeWbs = rawWbs;
             if (get().userRole === 'student') {
               const selectedTutors = get().linkedTutorIds;
-              activeWbs = activeWbs.filter(wb => {
+              activeWbs = rawWbs.filter(wb => {
                 if (wb.is_student_created || wb.creator_role === 'student' || wb.tutor_id === userId) return true;
                 if (wb.tutor_id && selectedTutors.includes(wb.tutor_id)) return true;
                 if (wb.tutor_name && selectedTutors.some(tId => (wb.tutor_name || '').toLowerCase().includes(tId.toLowerCase()))) return true;
-                // If SensorSsam is selected, include default tutor wordbooks
                 if (selectedTutors.includes('tutor-sensorssam') && (!wb.tutor_id || wb.tutor_name?.includes('SensorSsam'))) return true;
                 return false;
               });
             }
 
             const wordsMap: Record<string, Word[]> = {};
-            for (const wb of activeWbs) {
+            for (const wb of rawWbs) {
               const { data: wData } = await client.from('words').select('*').eq('wordbook_id', wb.id);
               wordsMap[wb.id] = wData || [];
             }
