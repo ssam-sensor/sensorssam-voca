@@ -5,7 +5,7 @@ import { useVocaStore } from '@/store/useVocaStore';
 import { BookOpen, User, GraduationCap, LogIn, ShieldCheck } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
-  const { accountRole, userRole, setUserRole, userEmail, signInWithGoogle, signOutUser } = useVocaStore();
+  const { accountRole, userRole, setUserRole, userEmail, userName, signInWithGoogle, signOutUser } = useVocaStore();
 
   const isLoggedIn = Boolean(userEmail);
 
@@ -88,19 +88,38 @@ export const Navbar: React.FC = () => {
         {/* Right: Google OAuth Button & Role Badge */}
         <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
           {isLoggedIn && (
-            <span className={`px-2 py-1 rounded-lg text-[11px] font-extrabold border ${
-              userRole === 'student'
-                ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                : 'bg-blue-50 text-blue-800 border-blue-300'
-            }`}>
-              {userRole === 'student' ? '🎓 학생 회원' : '👨‍🏫 튜터 회원'}
-            </span>
+            <div className="flex items-center gap-1.5">
+              <span className={`px-2.5 py-1 rounded-lg text-[11px] font-extrabold border ${
+                accountRole === 'tutor'
+                  ? 'bg-blue-50 text-blue-800 border-blue-300'
+                  : 'bg-emerald-50 text-emerald-800 border-emerald-300'
+              }`}>
+                {accountRole === 'tutor'
+                  ? (userRole === 'student' ? '👨‍🏫 튜터 회원 (학생 모드)' : '👨‍🏫 튜터 회원')
+                  : '🎓 학생 회원'}
+              </span>
+
+              {/* Edit Nickname Quick Button */}
+              <button
+                onClick={async () => {
+                  const current = userName || '';
+                  const input = prompt('화면에 표시할 별명(닉네임)을 입력하세요:', current);
+                  if (input !== null && input.trim()) {
+                    await useVocaStore.getState().updateProfileName(input.trim());
+                  }
+                }}
+                className="text-[10px] font-bold text-slate-500 hover:text-blue-600 underline"
+                title="별명/닉네임 변경"
+              >
+                [별명 수정]
+              </button>
+            </div>
           )}
 
           <button
             onClick={handleAuthToggle}
-            className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-100 text-xs font-semibold text-slate-800 transition-colors shadow-xs shrink-0 max-w-[130px] sm:max-w-none"
-            title={isLoggedIn ? userEmail : '구글 로그인'}
+            className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-100 text-xs font-semibold text-slate-800 transition-colors shadow-xs shrink-0 max-w-[140px] sm:max-w-none"
+            title={isLoggedIn ? (userName ? `${userName} (별명)` : '구글 로그인 회원') : '구글 로그인'}
           >
             <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24">
               <path
@@ -121,10 +140,10 @@ export const Navbar: React.FC = () => {
               />
             </svg>
             <span className="hidden sm:inline font-bold truncate">
-              {isLoggedIn ? userEmail.split('@')[0] : '구글 로그인'}
+              {isLoggedIn ? (userName || '로그인 됨') : '구글 로그인'}
             </span>
             <span className="sm:hidden font-bold truncate max-w-[60px]">
-              {isLoggedIn ? userEmail.split('@')[0] : '로그인'}
+              {isLoggedIn ? (userName || '로그인') : '로그인'}
             </span>
             {isLoggedIn ? (
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />

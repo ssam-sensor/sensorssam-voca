@@ -9,6 +9,7 @@ interface VocaState {
   accountRole: UserRole; // Official registered profile role (tutor or student)
   userRole: UserRole;    // Active view mode
   userEmail: string;
+  userName: string;      // User nickname (별명)
   tutorId: string;
   studentId: string;
   linkedTutorIds: string[];
@@ -18,7 +19,9 @@ interface VocaState {
   isVerifiedWithInviteCode: boolean;
   setUserRole: (role: UserRole) => void;
   setUserEmail: (email: string) => void;
-  verifyInviteCode: (code: string, role: UserRole) => Promise<{ success: boolean; error?: string }>;
+  setUserName: (name: string) => void;
+  updateProfileName: (name: string) => Promise<void>;
+  verifyInviteCode: (code: string, role: UserRole, name?: string) => Promise<{ success: boolean; error?: string }>;
   signOutUser: () => Promise<void>;
   signInWithGoogle: () => Promise<void>;
 
@@ -68,6 +71,7 @@ export const useVocaStore = create<VocaState>((set, get) => ({
   accountRole: 'student',
   userRole: 'student',
   userEmail: '',
+  userName: '',
   tutorId: '',
   studentId: '',
   availableTutors: [],
@@ -118,10 +122,26 @@ export const useVocaStore = create<VocaState>((set, get) => ({
     get().filterWordbooksForStudent();
   },
   setUserEmail: (email) => set({ userEmail: email }),
+  setUserName: (name) => set({ userName: name }),
 
-  verifyInviteCode: async (code: string, role: UserRole) => {
+  updateProfileName: async (name: string) => {
+    const nickname = (name || '').trim();
+    const userId = get().tutorId || get().studentId;
+    const client = getSupabaseClient();
+    if (client && userId) {
+      try {
+        await client.from('profiles').update({ name: nickname }).eq('id', userId);
+      } catch (err) {
+        console.warn('Profile name update error:', err);
+      }
+    }
+    set({ userName: nickname });
+  },
+
+  verifyInviteCode: async (code: string, role: UserRole, name?: string) => {
     const expectedCode = (process.env.NEXT_PUBLIC_INVITE_CODE || 'SSAM2026').trim();
     const givenCode = (code || '').trim();
+    const nickname = (name || '').trim();
 
     if (!givenCode || givenCode.toUpperCase() !== expectedCode.toUpperCase()) {
       return {
@@ -130,33 +150,39 @@ export const useVocaStore = create<VocaState>((set, get) => ({
       };
     }
 
-    // Persist verification status & chosen role
     if (typeof window !== 'undefined') {
       localStorage.setItem('vocat_invite_verified', 'true');
       localStorage.setItem('vocat_user_role', role);
     }
 
-    // Check user profile in Supabase: insert only if new, preserve role if existing
     const client = getSupabaseClient();
     if (client) {
       try {
         const { data: userData } = await client.auth.getUser();
         if (userData?.user) {
           const userId = userData.user.id;
-          set({ tutorId: userId, studentId: userId, userEmail: userData.user.email || '' });
+          set({ tutorId: userId, studentId: userId, userEmail: userData.user.email || '', userName: nickname });
           
           const { data: existingProfile } = await client.from('profiles').select('*').eq('id', userId).single();
           if (!existingProfile) {
             await client.from('profiles').insert({
               id: userId,
               email: userData.user.email || '',
+              name: nickname || (role === 'tutor' ? '센서쌤 튜터' : '학생'),
               role,
               is_verified: true,
               created_at: new Date().toISOString()
             });
-            set({ accountRole: role, userRole: role });
+            set({ accountRole: role, userRole: role, userName: nickname });
           } else {
-            set({ accountRole: existingProfile.role, userRole: existingProfile.role });
+            if (nickname && !existingProfile.name) {
+              await client.from('profiles').update({ name: nickname }).eq('id', userId);
+            }
+            set({
+              accountRole: existingProfile.role,
+              userRole: existingProfile.role,
+              userName: existingProfile.name || nickname
+            });
           }
         }
       } catch (err) {
@@ -294,6 +320,7 @@ export const useVocaStore = create<VocaState>((set, get) => ({
                 set({
                   accountRole: profile.role,
                   userRole: profile.role,
+                  userName: profile.name || '',
                   isVerifiedWithInviteCode: true
                 });
                 if (typeof window !== 'undefined') localStorage.setItem('vocat_invite_verified', 'true');
@@ -325,6 +352,7 @@ export const useVocaStore = create<VocaState>((set, get) => ({
 
           if (profile) {
             if (profile.role) set({ accountRole: profile.role, userRole: profile.role });
+            if (profile.name) set({ userName: profile.name });
             if (profile.is_verified) {
               set({ isVerifiedWithInviteCode: true });
               if (typeof window !== 'undefined') localStorage.setItem('vocat_invite_verified', 'true');
@@ -363,8 +391,8 @@ export const useVocaStore = create<VocaState>((set, get) => ({
           if (realTutors.length > 0) {
             const mappedTutors = realTutors.map(p => ({
               id: p.id,
-              name: maskName(p.name, p.email),
-              title: maskEmail(p.email),
+              name: p.name && p.name.trim() ? p.name.trim() : '등록 튜터',
+              title: '', // Completely hide email address
               avatarBg: 'bg-indigo-600'
             }));
             set({ availableTutors: mappedTutors });
@@ -469,7 +497,7 @@ export const useVocaStore = create<VocaState>((set, get) => ({
     const isStudent = get().userRole === 'student';
     const tutorName = isStudent
       ? '학생 (개인 단어장)'
-      : (get().userEmail.split('@')[0] ? `${get().userEmail.split('@')[0]} (튜터)` : 'SensorSsam (대표 튜터)');
+      : (get().userName ? get().userName : 'SensorSsam 튜터');
 
     if (client) {
       try {

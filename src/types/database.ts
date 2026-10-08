@@ -3,6 +3,7 @@ export type UserRole = 'tutor' | 'student';
 export interface Profile {
   id: string;
   email: string;
+  name?: string | null; // 별명 / 닉네임 (e.g. "센서쌤", "박튜터")
   role: UserRole;
   gemini_api_key?: string | null;
   created_at?: string;

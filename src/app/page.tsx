@@ -10,7 +10,7 @@ import { RoleSelectModal } from '@/components/RoleSelectModal';
 import { Layers, Users, GraduationCap, Loader2, BookOpen } from 'lucide-react';
 
 export default function Home() {
-  const { userRole, loadInitialData, isLoading, isVerifiedWithInviteCode } = useVocaStore();
+  const { accountRole, userRole, loadInitialData, isLoading, isVerifiedWithInviteCode } = useVocaStore();
   const [tutorTab, setTutorTab] = useState<'wordbooks' | 'students'>('wordbooks');
 
   useEffect(() => {
@@ -53,11 +53,13 @@ export default function Home() {
                     {userRole === 'tutor' ? '튜터 (교사/학부모) 화면' : '학생 (어휘 학습/테스트) 화면'}
                   </span>
                   <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${
-                    userRole === 'tutor'
+                    accountRole === 'tutor'
                       ? 'bg-blue-100 text-blue-900 border-blue-300'
                       : 'bg-emerald-100 text-emerald-900 border-emerald-300'
                   }`}>
-                    {userRole === 'tutor' ? '👨‍🏫 튜터 회원 로그인' : '🎓 학생 회원 로그인'}
+                    {accountRole === 'tutor'
+                      ? (userRole === 'student' ? '👨‍🏫 튜터 회원 (학생 모드 미리보기)' : '👨‍🏫 튜터 회원')
+                      : '🎓 학생 회원'}
                   </span>
                 </div>
                 <p className="text-xs text-slate-500 font-medium mt-0.5">

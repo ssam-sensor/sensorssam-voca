@@ -14,6 +14,7 @@ export const RoleSelectModal: React.FC<RoleSelectModalProps> = ({ isOpen }) => {
 
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
   const [selectedRole, setSelectedRole] = useState<UserRole>(userRole || 'student');
+  const [nickname, setNickname] = useState('');
   const [inviteCode, setInviteCode] = useState('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -24,6 +25,11 @@ export const RoleSelectModal: React.FC<RoleSelectModalProps> = ({ isOpen }) => {
     e.preventDefault();
     setErrorMsg(null);
 
+    if (!nickname.trim()) {
+      setErrorMsg('화면에 표시할 별명/닉네임을 입력해 주세요.');
+      return;
+    }
+
     if (!inviteCode.trim()) {
       setErrorMsg('올바른 초대 코드가 아닙니다. 센서쌤에게 가입 코드를 확인하세요.');
       return;
@@ -31,7 +37,7 @@ export const RoleSelectModal: React.FC<RoleSelectModalProps> = ({ isOpen }) => {
 
     setIsSubmitting(true);
     try {
-      const res = await verifyInviteCode(inviteCode, selectedRole);
+      const res = await verifyInviteCode(inviteCode, selectedRole, nickname);
       if (!res.success) {
         setErrorMsg(res.error || '올바른 초대 코드가 아닙니다. 센서쌤에게 가입 코드를 확인하세요.');
       }
@@ -196,10 +202,27 @@ export const RoleSelectModal: React.FC<RoleSelectModalProps> = ({ isOpen }) => {
               </div>
             </div>
 
-            {/* 2. Invite Code Input */}
+            {/* 2. Nickname Input */}
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-700 block">
-                2. 가입용 초대 코드 (비밀 패스코드) <span className="text-blue-600">*</span>
+                2. 별명 / 닉네임 (화면 표기용 이름) <span className="text-indigo-600">*</span>
+              </label>
+              <input
+                type="text"
+                value={nickname}
+                onChange={(e) => setNickname(e.target.value)}
+                placeholder={selectedRole === 'tutor' ? '예: 센서쌤, 박선생 튜터' : '예: 김철수'}
+                className="w-full px-4 py-3 rounded-xl bg-white border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 text-slate-800 placeholder-slate-400 font-bold"
+              />
+              <p className="text-[11px] text-slate-500">
+                * 이메일 대신 단어장 및 튜터 목록에 표시될 이름입니다.
+              </p>
+            </div>
+
+            {/* 3. Invite Code Input */}
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-700 block">
+                3. 가입용 초대 코드 (비밀 패스코드) <span className="text-blue-600">*</span>
               </label>
               <div className="relative">
                 <input
