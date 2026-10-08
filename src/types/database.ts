@@ -20,6 +20,8 @@ export interface Wordbook {
   id: string;
   tutor_id?: string | null;
   tutor_name?: string | null; // e.g. "SensorSsam", "영어 학원 튜터"
+  creator_role?: UserRole;
+  is_student_created?: boolean;
   title: string;       // e.g. "WordMaster 고등 COMPLETE"
   chapter: string;     // e.g. "DAY 15"
   created_at?: string;

@@ -11,6 +11,8 @@ interface VocaState {
   studentId: string;
   linkedTutorIds: string[];
   linkedStudentIds: string[];
+  availableTutors: { id: string; name: string; title: string; avatarBg: string }[];
+  toggleLinkedTutorId: (tutorId: string) => void;
   isVerifiedWithInviteCode: boolean;
   setUserRole: (role: UserRole) => void;
   setUserEmail: (email: string) => void;
@@ -99,9 +101,25 @@ export const useVocaStore = create<VocaState>((set, get) => ({
   userEmail: '',
   tutorId: '',
   studentId: '',
-  linkedTutorIds: [],
+  availableTutors: [
+    { id: 'tutor-sensorssam', name: 'SensorSsam (대표 튜터)', title: 'AI 1:1 맞춤 어휘', avatarBg: 'bg-blue-600' },
+    { id: 'tutor-lee', name: '이튜터 선생님', title: '수능 & 어휘 전문', avatarBg: 'bg-indigo-600' },
+    { id: 'tutor-park', name: '박튜터 선생님', title: '내신 & 수행평가', avatarBg: 'bg-emerald-600' },
+    { id: 'tutor-choi', name: '최튜터 선생님', title: '기초 & 숙어 전문', avatarBg: 'bg-amber-600' }
+  ],
+  linkedTutorIds: ['tutor-sensorssam', 'tutor-lee', 'tutor-park', 'tutor-choi'],
   linkedStudentIds: [],
   isVerifiedWithInviteCode: false,
+
+  toggleLinkedTutorId: (tutorId: string) => {
+    const current = get().linkedTutorIds;
+    const exists = current.includes(tutorId);
+    const updated = exists ? current.filter(id => id !== tutorId) : [...current, tutorId];
+    set({ linkedTutorIds: updated });
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('vocat_linked_tutor_ids', JSON.stringify(updated));
+    }
+  },
 
   setUserRole: (role) => {
     set({ userRole: role });
@@ -327,17 +345,29 @@ export const useVocaStore = create<VocaState>((set, get) => ({
             }
           }
 
-          // Query wordbooks ONLY for this authenticated user!
+          // Query ALL wordbooks in Supabase so tutors share all wordbooks with each other!
           const { data: wbData, error: wbErr } = await client
             .from('wordbooks')
             .select('*')
-            .eq('tutor_id', userId)
             .order('created_at', { ascending: false });
 
           if (!wbErr && wbData) {
-            let activeWbs: Wordbook[] = wbData || [];
+            let activeWbs: Wordbook[] = (wbData || []).map(wb => ({
+              ...wb,
+              tutor_name: wb.tutor_name || (wb.is_student_created ? '학생 (개인 단어장)' : 'SensorSsam (대표 튜터)')
+            }));
 
-            // NO AUTOMATIC SAMPLE DATA SEEDING! If activeWbs is empty, keep it empty.
+            // Filter for student mode vs tutor mode
+            if (get().userRole === 'student') {
+              const selectedTutors = get().linkedTutorIds;
+              activeWbs = activeWbs.filter(wb =>
+                wb.is_student_created ||
+                wb.tutor_id === userId ||
+                !wb.tutor_id ||
+                selectedTutors.includes(wb.tutor_id || '') ||
+                selectedTutors.some(tId => (wb.tutor_name || '').toLowerCase().includes(tId.toLowerCase()))
+              );
+            }
 
             const wordsMap: Record<string, Word[]> = {};
             for (const wb of activeWbs) {
@@ -384,6 +414,10 @@ export const useVocaStore = create<VocaState>((set, get) => ({
     const client = getSupabaseClient();
     const currentTutorId = get().tutorId;
     const dbTutorId = isUuid(currentTutorId) ? currentTutorId : null;
+    const isStudent = get().userRole === 'student';
+    const tutorName = isStudent
+      ? '학생 (개인 단어장)'
+      : (get().userEmail.split('@')[0] ? `${get().userEmail.split('@')[0]} (튜터)` : 'SensorSsam (대표 튜터)');
 
     if (client) {
       try {
@@ -392,7 +426,8 @@ export const useVocaStore = create<VocaState>((set, get) => ({
           .insert({
             ...(dbTutorId ? { tutor_id: dbTutorId } : {}),
             title,
-            chapter
+            chapter,
+            tutor_name: tutorName
           })
           .select()
           .single();
@@ -425,7 +460,9 @@ export const useVocaStore = create<VocaState>((set, get) => ({
 
           const newWbObj: Wordbook = {
             ...insertedWb,
-            tutor_name: 'SensorSsam (대표 튜터)',
+            tutor_name: tutorName,
+            creator_role: get().userRole,
+            is_student_created: isStudent,
             words_count: (insertedWords || []).length
           };
 
@@ -452,7 +489,9 @@ export const useVocaStore = create<VocaState>((set, get) => ({
     const newWb: Wordbook = {
       id: newWbId,
       tutor_id: get().tutorId,
-      tutor_name: 'SensorSsam (대표 튜터)',
+      tutor_name: tutorName,
+      creator_role: get().userRole,
+      is_student_created: isStudent,
       title,
       chapter,
       created_at: new Date().toISOString(),
@@ -486,8 +525,15 @@ export const useVocaStore = create<VocaState>((set, get) => ({
   },
 
   deleteWordbook: async (wordbookId) => {
-    const client = getSupabaseClient();
     const targetWb = get().wordbooks.find(wb => wb.id === wordbookId);
+    const isStudent = get().userRole === 'student';
+
+    if (isStudent && targetWb && !targetWb.is_student_created && targetWb.tutor_id !== get().studentId) {
+      alert('튜터가 배정한 단어장은 학생이 삭제할 수 없습니다. 학생 본인이 직접 생성한 개인 단어장만 삭제할 수 있습니다.');
+      return;
+    }
+
+    const client = getSupabaseClient();
     const currentTutorId = get().tutorId;
 
     if (client) {

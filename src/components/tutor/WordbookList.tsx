@@ -87,9 +87,14 @@ export const WordbookList: React.FC = () => {
                 <div className="space-y-2.5 sm:space-y-3">
                   <div className="flex items-start justify-between">
                     <div>
-                      <span className="inline-block px-2.5 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 text-xs font-mono font-bold">
-                        {wb.chapter}
-                      </span>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="inline-block px-2.5 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 text-xs font-mono font-bold">
+                          {wb.chapter}
+                        </span>
+                        <span className="inline-block px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-bold">
+                          튜터: {wb.tutor_name || 'SensorSsam (대표 튜터)'}
+                        </span>
+                      </div>
                       <h3 className="font-extrabold text-slate-800 text-base mt-1.5 group-hover:text-blue-600 transition-colors">
                         {wb.title}
                       </h3>
