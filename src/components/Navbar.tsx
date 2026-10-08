@@ -77,10 +77,27 @@ export const Navbar: React.FC = () => {
 
           {/* Right: Settings & Google Auth */}
           <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+            {/* DB Status Indicator */}
+            {settings.isCustomSupabaseConnected ? (
+              <span className="hidden lg:inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-300">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                클라우드 DB 동기화
+              </span>
+            ) : (
+              <span
+                onClick={() => setIsSettingsOpen(true)}
+                className="hidden lg:inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-300 cursor-pointer hover:bg-amber-100 transition-colors"
+                title="클라우드 DB 미연동: 기기 간 자동 동기화를 위해 설정에서 Supabase DB URL을 등록해 주세요."
+              >
+                <span className="w-2 h-2 rounded-full bg-amber-500" />
+                로컬 단독 모드 (미동기화)
+              </span>
+            )}
+
             {/* AI Key Status Indicator */}
             {settings.isCustomGeminiConnected && (
-              <span className="hidden md:inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
-                <Sparkles className="w-3 h-3 text-amber-600" />
+              <span className="hidden md:inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                <Sparkles className="w-3 h-3 text-blue-600" />
                 Gemini AI
               </span>
             )}

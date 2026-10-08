@@ -52,6 +52,44 @@ const isUuid = (id?: string | null): boolean => {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 };
 
+let authListenerSubscribed = false;
+
+// Helper to seed sample data into connected Supabase DB when DB is empty
+async function seedSampleDataToSupabase(client: any, userId?: string | null) {
+  try {
+    const validTutorId = isUuid(userId) ? userId : null;
+    for (const wb of SAMPLE_WORDBOOKS) {
+      const { data: insertedWb, error: wbErr } = await client
+        .from('wordbooks')
+        .insert({
+          ...(validTutorId ? { tutor_id: validTutorId } : {}),
+          title: wb.title,
+          chapter: wb.chapter
+        })
+        .select()
+        .single();
+
+      if (!wbErr && insertedWb) {
+        const sampleWords = SAMPLE_WORDS[wb.id] || [];
+        const dbWords = sampleWords.map(w => ({
+          wordbook_id: insertedWb.id,
+          word: w.word,
+          pronunciation: w.pronunciation || null,
+          pos: w.pos || null,
+          meaning: w.meaning,
+          example_sentence: w.example_sentence || null,
+          example_translation: w.example_translation || null,
+          is_idiom: Boolean(w.is_idiom),
+          is_spelling_priority: Boolean(w.is_spelling_priority)
+        }));
+        await client.from('words').insert(dbWords);
+      }
+    }
+  } catch (err) {
+    console.warn('Failed seeding sample data to Supabase:', err);
+  }
+}
+
 export const useVocaStore = create<VocaState>((set, get) => ({
   userRole: 'student', // default student view, easily toggleable to 'tutor'
   userEmail: 'demo_user@sensorssam.com',
@@ -220,6 +258,36 @@ export const useVocaStore = create<VocaState>((set, get) => ({
 
     const client = getSupabaseClient();
     if (client) {
+      // Subscribe to Auth state changes once for OAuth redirects
+      if (!authListenerSubscribed) {
+        authListenerSubscribed = true;
+        client.auth.onAuthStateChange(async (event, session) => {
+          if (session?.user) {
+            const userId = session.user.id;
+            set({
+              userEmail: session.user.email || get().userEmail,
+              tutorId: userId,
+              studentId: userId,
+              isVerifiedWithInviteCode: true
+            });
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('vocat_invite_verified', 'true');
+            }
+            try {
+              await client.from('profiles').upsert({
+                id: userId,
+                email: session.user.email || get().userEmail,
+                role: get().userRole,
+                is_verified: true,
+                created_at: new Date().toISOString()
+              });
+            } catch (e) {
+              console.warn('Profile sync error:', e);
+            }
+          }
+        });
+      }
+
       try {
         const { data: authData } = await client.auth.getUser();
         if (authData?.user) {
@@ -255,12 +323,22 @@ export const useVocaStore = create<VocaState>((set, get) => ({
           : [get().tutorId];
 
         // Fetch wordbooks created in DB
-        const { data: wbData, error: wbErr } = await client
+        let { data: wbData, error: wbErr } = await client
           .from('wordbooks')
           .select('*')
           .order('created_at', { ascending: false });
         
         if (!wbErr && wbData) {
+          // If Supabase DB has 0 wordbooks, seed initial sample data into Supabase DB
+          if (wbData.length === 0) {
+            await seedSampleDataToSupabase(client, get().tutorId);
+            const { data: seededWbs } = await client
+              .from('wordbooks')
+              .select('*')
+              .order('created_at', { ascending: false });
+            wbData = seededWbs || [];
+          }
+
           if (wbData.length > 0) {
             const wordsMap: Record<string, Word[]> = {};
             
@@ -288,30 +366,6 @@ export const useVocaStore = create<VocaState>((set, get) => ({
               localStorage.setItem('vocat_local_words', JSON.stringify(wordsMap));
             }
             return;
-          } else {
-            // DB exists but is empty -> check if local storage has wordbooks or seed sample data
-            const storedWb = typeof window !== 'undefined' ? localStorage.getItem('vocat_local_wordbooks') : null;
-            const storedWords = typeof window !== 'undefined' ? localStorage.getItem('vocat_local_words') : null;
-
-            if (storedWb && storedWords) {
-              const wbList: Wordbook[] = JSON.parse(storedWb);
-              const wordsObj: Record<string, Word[]> = JSON.parse(storedWords);
-              set({
-                wordbooks: wbList,
-                words: wordsObj,
-                activeWordbookId: wbList[0]?.id || null,
-                isLoading: false
-              });
-              return;
-            } else {
-              set({
-                wordbooks: SAMPLE_WORDBOOKS,
-                words: SAMPLE_WORDS,
-                activeWordbookId: SAMPLE_WORDBOOKS[0]?.id || null,
-                isLoading: false
-              });
-              return;
-            }
           }
         }
       } catch (err) {
