@@ -16,6 +16,7 @@ interface VocaState {
   setUserEmail: (email: string) => void;
   verifyInviteCode: (code: string, role: UserRole) => Promise<{ success: boolean; error?: string }>;
   signOutUser: () => Promise<void>;
+  signInWithGoogle: () => Promise<void>;
 
   // Settings
   settings: SettingsConfig;
@@ -122,6 +123,28 @@ export const useVocaStore = create<VocaState>((set, get) => ({
     });
   },
 
+  signInWithGoogle: async () => {
+    const client = getSupabaseClient();
+    if (client) {
+      try {
+        await client.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo: typeof window !== 'undefined' ? window.location.origin : undefined
+          }
+        });
+      } catch (err) {
+        console.error('Google OAuth sign-in error:', err);
+      }
+    } else {
+      // Toggle demo account if Supabase is not connected
+      const current = get().userEmail;
+      set({
+        userEmail: current === 'guest@sensorssam.com' ? 'tutor_parent@sensorssam.com' : 'guest@sensorssam.com'
+      });
+    }
+  },
+
   settings: {
     supabaseUrl: '',
     supabaseAnonKey: '',
@@ -144,9 +167,13 @@ export const useVocaStore = create<VocaState>((set, get) => ({
 
   loadSettings: () => {
     if (typeof window === 'undefined') return;
-    const supabaseUrl = localStorage.getItem('vocat_supabase_url') || '';
-    const supabaseAnonKey = localStorage.getItem('vocat_supabase_anon_key') || '';
-    const geminiApiKey = localStorage.getItem('vocat_gemini_api_key') || '';
+    const localUrl = localStorage.getItem('vocat_supabase_url') || '';
+    const localKey = localStorage.getItem('vocat_supabase_anon_key') || '';
+    const localGemini = localStorage.getItem('vocat_gemini_api_key') || '';
+
+    const supabaseUrl = localUrl || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+    const supabaseAnonKey = localKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+    const geminiApiKey = localGemini || process.env.NEXT_PUBLIC_GEMINI_API_KEY || '';
 
     set({
       settings: {
@@ -186,6 +213,24 @@ export const useVocaStore = create<VocaState>((set, get) => ({
     const client = getSupabaseClient();
     if (client) {
       try {
+        const { data: authData } = await client.auth.getUser();
+        if (authData?.user) {
+          set({ userEmail: authData.user.email || get().userEmail });
+          const { data: profile } = await client
+            .from('profiles')
+            .select('*')
+            .eq('id', authData.user.id)
+            .single();
+
+          if (profile) {
+            if (profile.role) set({ userRole: profile.role });
+            if (profile.is_verified) {
+              set({ isVerifiedWithInviteCode: true });
+              if (typeof window !== 'undefined') localStorage.setItem('vocat_invite_verified', 'true');
+            }
+          }
+        }
+
         // Query N:M tutor_students table for linked tutors/students
         const { data: linkData } = await client.from('tutor_students').select('*');
         const linkedTutors = linkData
