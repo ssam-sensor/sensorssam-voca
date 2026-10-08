@@ -61,6 +61,20 @@ const isUuid = (id?: string | null): boolean => {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 };
 
+// Helper to get or generate a valid user UUID
+const getOrCreateUserId = (): string => {
+  if (typeof window !== 'undefined') {
+    let saved = localStorage.getItem('vocat_user_id');
+    if (saved && isUuid(saved)) return saved;
+    const newId = (typeof crypto !== 'undefined' && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : '10000000-1000-4000-8000-100000000000';
+    localStorage.setItem('vocat_user_id', newId);
+    return newId;
+  }
+  return '10000000-1000-4000-8000-100000000000';
+};
+
 // User-scoped LocalStorage Key Generators to prevent demo_user & google_user cross-contamination
 const getWbKey = (tutorId?: string | null) => `vocat_local_wordbooks_${tutorId || 'demo'}`;
 const getWordsKey = (tutorId?: string | null) => `vocat_local_words_${tutorId || 'demo'}`;
@@ -148,25 +162,30 @@ export const useVocaStore = create<VocaState>((set, get) => ({
     if (client) {
       try {
         const { data: authData } = await client.auth.getUser();
-        const userId = authData?.user?.id || get().tutorId || get().studentId;
+        let userId = authData?.user?.id || get().tutorId || get().studentId;
 
-        if (userId && isUuid(userId)) {
-          const userEmail = authData?.user?.email || get().userEmail || '';
-          const role = get().accountRole || get().userRole || 'tutor';
+        if (!userId || !isUuid(userId)) {
+          userId = getOrCreateUserId();
+          set({ tutorId: userId, studentId: userId });
+        }
 
-          const { error } = await client.from('profiles').upsert({
-            id: userId,
-            email: userEmail,
-            name: nickname,
-            role: role,
-            is_verified: true,
-            updated_at: new Date().toISOString()
-          }, { onConflict: 'id' });
+        const userEmail = authData?.user?.email || get().userEmail || '';
+        const role = get().accountRole || get().userRole || 'student';
 
-          if (error) {
-            console.warn('Upsert profile name failed, attempting update:', error);
-            await client.from('profiles').update({ name: nickname }).eq('id', userId);
-          }
+        const { error } = await client.from('profiles').upsert({
+          id: userId,
+          email: userEmail,
+          name: nickname,
+          role: role,
+          is_verified: true,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'id' });
+
+        if (error) {
+          console.warn('Upsert profile name failed, attempting update:', error);
+          await client.from('profiles').update({ name: nickname }).eq('id', userId);
+        } else {
+          console.log('Saved nickname to DB profiles table successfully:', nickname);
         }
       } catch (err) {
         console.warn('Profile name update error:', err);
@@ -569,23 +588,66 @@ export const useVocaStore = create<VocaState>((set, get) => ({
 
   addWordbookWithWords: async (title, chapter, batchWords) => {
     const client = getSupabaseClient();
-    const currentTutorId = get().tutorId;
-    const dbTutorId = isUuid(currentTutorId) ? currentTutorId : null;
     const isStudent = get().userRole === 'student';
     const tutorName = isStudent
       ? '학생 (개인 단어장)'
       : (get().userName ? get().userName : 'SensorSsam 튜터');
 
+    let activeUserId = get().tutorId || get().studentId;
+    let userEmail = get().userEmail;
+
     if (client) {
       try {
+        const { data: authData } = await client.auth.getUser();
+        if (authData?.user) {
+          activeUserId = authData.user.id;
+          userEmail = authData.user.email || userEmail;
+          set({ tutorId: activeUserId, studentId: activeUserId, userEmail });
+        }
+      } catch (e) {
+        console.warn('Auth check error in addWordbookWithWords:', e);
+      }
+
+      if (!activeUserId || !isUuid(activeUserId)) {
+        activeUserId = getOrCreateUserId();
+        set({ tutorId: activeUserId, studentId: activeUserId });
+      }
+
+      const dbUserId = isUuid(activeUserId) ? activeUserId : null;
+
+      try {
+        // STEP 1: Ensure student/tutor profile exists in DB to satisfy foreign key constraint!
+        if (dbUserId) {
+          const currentRole = get().accountRole || get().userRole || (isStudent ? 'student' : 'tutor');
+          const currentName = get().userName || (isStudent ? '학생' : 'SensorSsam 튜터');
+
+          const { error: profErr } = await client.from('profiles').upsert({
+            id: dbUserId,
+            email: userEmail || '',
+            name: currentName,
+            role: currentRole,
+            is_verified: true,
+            created_at: new Date().toISOString()
+          }, { onConflict: 'id' });
+
+          if (profErr) {
+            console.warn('Profile prep upsert warning:', profErr);
+          }
+        }
+
+        // STEP 2: Insert Wordbook into Supabase DB table
+        const insertWbData: any = {
+          title,
+          chapter,
+          tutor_name: tutorName
+        };
+        if (dbUserId) {
+          insertWbData.tutor_id = dbUserId;
+        }
+
         const { data: insertedWb, error: wbErr } = await client
           .from('wordbooks')
-          .insert({
-            ...(dbTutorId ? { tutor_id: dbTutorId } : {}),
-            title,
-            chapter,
-            tutor_name: tutorName
-          })
+          .insert(insertWbData)
           .select()
           .single();
 
@@ -594,6 +656,7 @@ export const useVocaStore = create<VocaState>((set, get) => ({
         }
 
         if (!wbErr && insertedWb) {
+          // STEP 3: Insert Words into Supabase DB table
           const dbWords = batchWords.map(item => ({
             wordbook_id: insertedWb.id,
             word: item.word,
@@ -614,6 +677,8 @@ export const useVocaStore = create<VocaState>((set, get) => ({
           if (wordsErr) {
             console.error('Supabase words insert error:', wordsErr);
           }
+
+          console.log('Saved student wordbook to Supabase DB successfully:', insertedWb.id);
 
           const newWbObj: Wordbook = {
             ...insertedWb,
@@ -637,7 +702,7 @@ export const useVocaStore = create<VocaState>((set, get) => ({
 
           const updatedAllWbs = [newWbObj, ...get().allWordbooks];
           const updatedWbs = [newWbObj, ...get().wordbooks];
-          const updatedWords = { ...get().words, [insertedWb.id]: insertedWords || [] };
+          const updatedWords = { ...get().words, [insertedWb.id]: insertedWords || dbWords || [] };
 
           set({ allWordbooks: updatedAllWbs, wordbooks: updatedWbs, words: updatedWords, activeWordbookId: insertedWb.id });
 
@@ -650,7 +715,7 @@ export const useVocaStore = create<VocaState>((set, get) => ({
           return newWbObj;
         }
       } catch (err) {
-        console.warn('Failed inserting to Supabase, falling back to local state:', err);
+        console.error('Failed inserting to Supabase:', err);
       }
     }
 
