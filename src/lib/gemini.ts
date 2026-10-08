@@ -89,7 +89,7 @@ export async function extractWordsFromMultimodalFile(
   const apiKey = getGeminiApiKey();
   
   if (!apiKey) {
-    throw new Error('Gemini API 키가 설정되지 않았습니다. [설정] 메뉴에서 Gemini API 키를 입력해주세요.');
+    throw new Error('Gemini API 키가 설정되지 않았습니다. .env.local 환경 변수 설정을 확인해 주세요.');
   }
 
   const ai = new GoogleGenAI({ apiKey });
@@ -156,7 +156,7 @@ export async function generateWordbookWithGemini(
   const apiKey = getGeminiApiKey();
   
   if (!apiKey) {
-    throw new Error('Gemini API 키가 설정되지 않았습니다. [설정] 메뉴에서 Gemini API 키를 입력해주세요.');
+    throw new Error('Gemini API 키가 설정되지 않았습니다. .env.local 환경 변수 설정을 확인해 주세요.');
   }
 
   const ai = new GoogleGenAI({ apiKey });

@@ -81,7 +81,7 @@ export const WordbookFormModal: React.FC<WordbookFormModalProps> = ({ isOpen, on
 
     const apiKey = getGeminiApiKey();
     if (!apiKey) {
-      alert('Gemini API 키가 설정되지 않았습니다. [환경 설정] 메뉴에서 API 키를 먼저 입력해 주세요.');
+      alert('Gemini API 키가 설정되지 않았습니다. .env.local 환경 변수 설정을 확인해 주세요.');
       return;
     }
 
@@ -138,7 +138,7 @@ export const WordbookFormModal: React.FC<WordbookFormModalProps> = ({ isOpen, on
 
     const apiKey = getGeminiApiKey();
     if (!apiKey) {
-      alert('Gemini API 키가 설정되지 않았습니다. [환경 설정] 메뉴에서 API 키를 입력해 주세요.');
+      alert('Gemini API 키가 설정되지 않았습니다. .env.local 환경 변수 설정을 확인해 주세요.');
       return;
     }
 

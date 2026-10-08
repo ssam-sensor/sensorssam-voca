@@ -3,7 +3,7 @@ import { Wordbook, Word } from '@/types/database';
 export const SAMPLE_WORDBOOKS: Wordbook[] = [
   {
     id: 'wb-wm-day15',
-    tutor_id: 'tutor-demo-1',
+    tutor_id: '',
     tutor_name: 'SensorSsam (대표 튜터)',
     title: 'WordMaster 고등 COMPLETE',
     chapter: 'DAY 15',
@@ -12,7 +12,7 @@ export const SAMPLE_WORDBOOKS: Wordbook[] = [
   },
   {
     id: 'wb-wm-day16',
-    tutor_id: 'tutor-demo-1',
+    tutor_id: '',
     tutor_name: 'SensorSsam (대표 튜터)',
     title: 'WordMaster 고등 COMPLETE',
     chapter: 'DAY 16',
@@ -21,7 +21,7 @@ export const SAMPLE_WORDBOOKS: Wordbook[] = [
   },
   {
     id: 'wb-csat-idiom',
-    tutor_id: 'tutor-demo-2',
+    tutor_id: '',
     tutor_name: '강남 영어 전문 학원',
     title: '수능 빈출 필수 숙어 50',
     chapter: 'DAY 01',

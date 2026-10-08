@@ -52,6 +52,10 @@ const isUuid = (id?: string | null): boolean => {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 };
 
+// User-scoped LocalStorage Key Generators to prevent demo_user & google_user cross-contamination
+const getWbKey = (tutorId?: string | null) => `vocat_local_wordbooks_${tutorId || 'demo'}`;
+const getWordsKey = (tutorId?: string | null) => `vocat_local_words_${tutorId || 'demo'}`;
+
 let authListenerSubscribed = false;
 
 // Helper to seed sample data into connected Supabase DB when DB is empty
@@ -91,12 +95,12 @@ async function seedSampleDataToSupabase(client: any, userId?: string | null) {
 }
 
 export const useVocaStore = create<VocaState>((set, get) => ({
-  userRole: 'student', // default student view, easily toggleable to 'tutor'
-  userEmail: 'demo_user@sensorssam.com',
-  tutorId: 'tutor-demo-1',
-  studentId: 'student-demo-1',
-  linkedTutorIds: ['tutor-demo-1', 'tutor-demo-2'],
-  linkedStudentIds: ['student-demo-1', 'student-demo-2'],
+  userRole: 'student',
+  userEmail: '',
+  tutorId: '',
+  studentId: '',
+  linkedTutorIds: [],
+  linkedStudentIds: [],
   isVerifiedWithInviteCode: false,
 
   setUserRole: (role) => {
@@ -129,10 +133,10 @@ export const useVocaStore = create<VocaState>((set, get) => ({
         const { data: userData } = await client.auth.getUser();
         if (userData?.user) {
           const userId = userData.user.id;
-          set({ tutorId: userId, studentId: userId });
+          set({ tutorId: userId, studentId: userId, userEmail: userData.user.email || '' });
           await client.from('profiles').upsert({
             id: userId,
-            email: userData.user.email || 'demo_user@sensorssam.com',
+            email: userData.user.email || '',
             role,
             is_verified: true,
             created_at: new Date().toISOString()
@@ -165,7 +169,14 @@ export const useVocaStore = create<VocaState>((set, get) => ({
     set({
       isVerifiedWithInviteCode: false,
       userRole: 'student',
-      userEmail: 'guest@sensorssam.com'
+      userEmail: '',
+      tutorId: '',
+      studentId: '',
+      linkedTutorIds: [],
+      linkedStudentIds: [],
+      wordbooks: [],
+      words: {},
+      activeWordbookId: null
     });
   },
 
@@ -182,12 +193,6 @@ export const useVocaStore = create<VocaState>((set, get) => ({
       } catch (err) {
         console.error('Google OAuth sign-in error:', err);
       }
-    } else {
-      // Toggle demo account if Supabase is not connected
-      const current = get().userEmail;
-      set({
-        userEmail: current === 'guest@sensorssam.com' ? 'tutor_parent@sensorssam.com' : 'guest@sensorssam.com'
-      });
     }
   },
 
@@ -207,7 +212,6 @@ export const useVocaStore = create<VocaState>((set, get) => ({
       if (newSettings.supabaseAnonKey !== undefined) localStorage.setItem('vocat_supabase_anon_key', newSettings.supabaseAnonKey);
       if (newSettings.geminiApiKey !== undefined) localStorage.setItem('vocat_gemini_api_key', newSettings.geminiApiKey);
     }
-    // Reload initial data with new settings
     get().loadInitialData();
   },
 
@@ -258,14 +262,13 @@ export const useVocaStore = create<VocaState>((set, get) => ({
 
     const client = getSupabaseClient();
     if (client) {
-      // Subscribe to Auth state changes once for OAuth redirects
       if (!authListenerSubscribed) {
         authListenerSubscribed = true;
         client.auth.onAuthStateChange(async (event, session) => {
           if (session?.user) {
             const userId = session.user.id;
             set({
-              userEmail: session.user.email || get().userEmail,
+              userEmail: session.user.email || '',
               tutorId: userId,
               studentId: userId,
               isVerifiedWithInviteCode: true
@@ -276,7 +279,7 @@ export const useVocaStore = create<VocaState>((set, get) => ({
             try {
               await client.from('profiles').upsert({
                 id: userId,
-                email: session.user.email || get().userEmail,
+                email: session.user.email || '',
                 role: get().userRole,
                 is_verified: true,
                 created_at: new Date().toISOString()
@@ -290,9 +293,17 @@ export const useVocaStore = create<VocaState>((set, get) => ({
 
       try {
         const { data: authData } = await client.auth.getUser();
+        let isNewProfileCreated = false;
+
         if (authData?.user) {
           const userId = authData.user.id;
-          set({ userEmail: authData.user.email || get().userEmail, tutorId: userId, studentId: userId });
+          set({
+            userEmail: authData.user.email || '',
+            tutorId: userId,
+            studentId: userId,
+            isVerifiedWithInviteCode: true
+          });
+
           const { data: profile } = await client
             .from('profiles')
             .select('*')
@@ -300,9 +311,10 @@ export const useVocaStore = create<VocaState>((set, get) => ({
             .single();
 
           if (!profile) {
+            isNewProfileCreated = true;
             await client.from('profiles').upsert({
               id: userId,
-              email: authData.user.email || get().userEmail,
+              email: authData.user.email || '',
               role: get().userRole,
               is_verified: true,
               created_at: new Date().toISOString()
@@ -314,146 +326,58 @@ export const useVocaStore = create<VocaState>((set, get) => ({
               if (typeof window !== 'undefined') localStorage.setItem('vocat_invite_verified', 'true');
             }
           }
-        }
 
-        // Query N:M tutor_students table for linked tutors/students
-        const { data: linkData } = await client.from('tutor_students').select('*');
-        const linkedTutors = linkData
-          ? linkData.filter(l => l.student_id === get().studentId).map(l => l.tutor_id)
-          : [get().tutorId];
+          // Query wordbooks ONLY for this authenticated user!
+          const { data: wbData, error: wbErr } = await client
+            .from('wordbooks')
+            .select('*')
+            .eq('tutor_id', userId)
+            .order('created_at', { ascending: false });
 
-        // Filter wordbooks for authenticated user vs demo account
-        const currentTutorId = get().tutorId;
-        const isUserAuth = isUuid(currentTutorId);
+          if (!wbErr && wbData) {
+            let activeWbs: Wordbook[] = wbData || [];
 
-        let wbQuery = client.from('wordbooks').select('*').order('created_at', { ascending: false });
-        if (isUserAuth) {
-          // Authenticated user: show own created wordbooks + public sample wordbooks (tutor_id is null)
-          wbQuery = wbQuery.or(`tutor_id.eq.${currentTutorId},tutor_id.is.null`);
-        } else {
-          // Demo/Guest account: show ONLY public sample wordbooks (tutor_id is null)
-          wbQuery = wbQuery.is('tutor_id', null);
-        }
+            // NO AUTOMATIC SAMPLE DATA SEEDING! If activeWbs is empty, keep it empty.
 
-        let { data: wbData, error: wbErr } = await wbQuery;
-        
-        if (!wbErr && wbData) {
-          // If Supabase DB has 0 wordbooks for public/sample, seed initial sample data into Supabase DB
-          if (wbData.length === 0) {
-            await seedSampleDataToSupabase(client, isUserAuth ? currentTutorId : null);
-            let reQuery = client.from('wordbooks').select('*').order('created_at', { ascending: false });
-            if (isUserAuth) {
-              reQuery = reQuery.or(`tutor_id.eq.${currentTutorId},tutor_id.is.null`);
-            } else {
-              reQuery = reQuery.is('tutor_id', null);
-            }
-            const { data: seededWbs } = await reQuery;
-            wbData = seededWbs || [];
-          }
-
-          if (wbData.length > 0) {
             const wordsMap: Record<string, Word[]> = {};
-            
-            for (const wb of wbData) {
+            for (const wb of activeWbs) {
               const { data: wData } = await client.from('words').select('*').eq('wordbook_id', wb.id);
               wordsMap[wb.id] = wData || [];
             }
 
-            // Fetch quiz results & incorrect notes
             const { data: qrData } = await client.from('quiz_results').select('*').order('created_at', { ascending: false });
             const { data: incData } = await client.from('incorrect_notes').select('*, word:words(*)');
 
             set({
-              wordbooks: wbData,
+              wordbooks: activeWbs,
               words: wordsMap,
               quizResults: qrData || [],
               incorrectNotes: incData || [],
-              activeWordbookId: wbData[0]?.id || null,
-              linkedTutorIds: linkedTutors,
+              activeWordbookId: activeWbs[0]?.id || null,
               isLoading: false
             });
 
+            const wbKey = getWbKey(userId);
+            const wordsKey = getWordsKey(userId);
             if (typeof window !== 'undefined') {
-              localStorage.setItem('vocat_local_wordbooks', JSON.stringify(wbData));
-              localStorage.setItem('vocat_local_words', JSON.stringify(wordsMap));
+              localStorage.setItem(wbKey, JSON.stringify(activeWbs));
+              localStorage.setItem(wordsKey, JSON.stringify(wordsMap));
             }
             return;
           }
         }
       } catch (err) {
-        console.warn('Supabase fetch error, falling back to local state:', err);
+        console.warn('Supabase auth check error:', err);
       }
     }
 
-    // Local Storage / Sample Data Fallback
-    if (typeof window !== 'undefined') {
-      const storedWb = localStorage.getItem('vocat_local_wordbooks');
-      const storedWords = localStorage.getItem('vocat_local_words');
-      const storedQuiz = localStorage.getItem('vocat_local_quiz_results');
-      const storedInc = localStorage.getItem('vocat_local_incorrect');
-
-      if (storedWb && storedWords) {
-        const wbList: Wordbook[] = JSON.parse(storedWb);
-        const wordsObj: Record<string, Word[]> = JSON.parse(storedWords);
-        set({
-          wordbooks: wbList,
-          words: wordsObj,
-          quizResults: storedQuiz ? JSON.parse(storedQuiz) : [],
-          incorrectNotes: storedInc ? JSON.parse(storedInc) : [],
-          activeWordbookId: wbList[0]?.id || null,
-          isLoading: false
-        });
-        return;
-      }
-    }
-
-    // Default sample data initialization (N:M tutors attached)
+    // Unauthenticated or unverified visitors: NO DEMO WORD DATA!
     set({
-      wordbooks: SAMPLE_WORDBOOKS,
-      words: SAMPLE_WORDS,
-      activeWordbookId: SAMPLE_WORDBOOKS[0].id,
-      quizResults: [
-        {
-          id: 'qr-sample-1',
-          student_id: get().studentId,
-          wordbook_id: 'wb-wm-day15',
-          total_score: 8,
-          max_score: 10,
-          created_at: new Date(Date.now() - 3600000 * 5).toISOString(),
-          wordbook_title: 'WordMaster 고등 COMPLETE',
-          wordbook_chapter: 'DAY 15'
-        }
-      ],
-      incorrectNotes: [
-        {
-          id: 'inc-sample-1',
-          student_id: get().studentId,
-          word_id: 'w-15-4',
-          wrong_count: 2,
-          last_wrong_answer: '대충 조사하다',
-          is_resolved: false,
-          updated_at: new Date().toISOString(),
-          word: SAMPLE_WORDS['wb-wm-day15'][3] // scrutinize
-        },
-        {
-          id: 'inc-sample-2',
-          student_id: get().studentId,
-          word_id: 'w-15-7',
-          wrong_count: 1,
-          last_wrong_answer: '거친',
-          is_resolved: false,
-          updated_at: new Date().toISOString(),
-          word: SAMPLE_WORDS['wb-wm-day15'][6] // resilient
-        }
-      ],
+      wordbooks: [],
+      words: {},
+      activeWordbookId: null,
       isLoading: false
     });
-
-    // Save initial sample data to local storage for persistence
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('vocat_local_wordbooks', JSON.stringify(SAMPLE_WORDBOOKS));
-      localStorage.setItem('vocat_local_words', JSON.stringify(SAMPLE_WORDS));
-    }
   },
 
   addWordbookWithWords: async (title, chapter, batchWords) => {
@@ -511,8 +435,9 @@ export const useVocaStore = create<VocaState>((set, get) => ({
           set({ wordbooks: updatedWbs, words: updatedWords, activeWordbookId: insertedWb.id });
 
           if (typeof window !== 'undefined') {
-            localStorage.setItem('vocat_local_wordbooks', JSON.stringify(updatedWbs));
-            localStorage.setItem('vocat_local_words', JSON.stringify(updatedWords));
+            const currentTId = get().tutorId;
+            localStorage.setItem(getWbKey(currentTId), JSON.stringify(updatedWbs));
+            localStorage.setItem(getWordsKey(currentTId), JSON.stringify(updatedWords));
           }
 
           return newWbObj;
@@ -552,8 +477,9 @@ export const useVocaStore = create<VocaState>((set, get) => ({
     set({ wordbooks: updatedWbs, words: updatedWords, activeWordbookId: newWbId });
 
     if (typeof window !== 'undefined') {
-      localStorage.setItem('vocat_local_wordbooks', JSON.stringify(updatedWbs));
-      localStorage.setItem('vocat_local_words', JSON.stringify(updatedWords));
+      const currentTId = get().tutorId;
+      localStorage.setItem(getWbKey(currentTId), JSON.stringify(updatedWbs));
+      localStorage.setItem(getWordsKey(currentTId), JSON.stringify(updatedWords));
     }
 
     return newWb;
@@ -561,10 +487,30 @@ export const useVocaStore = create<VocaState>((set, get) => ({
 
   deleteWordbook: async (wordbookId) => {
     const client = getSupabaseClient();
-    if (client && isUuid(wordbookId)) {
+    const targetWb = get().wordbooks.find(wb => wb.id === wordbookId);
+    const currentTutorId = get().tutorId;
+
+    if (client) {
       try {
-        const { error } = await client.from('wordbooks').delete().eq('id', wordbookId);
-        if (error) console.error('Supabase delete wordbook error:', error);
+        if (isUuid(wordbookId)) {
+          // Delete associated words FIRST to avoid foreign key constraint failure
+          await client.from('words').delete().eq('wordbook_id', wordbookId);
+          const { error } = await client.from('wordbooks').delete().eq('id', wordbookId);
+          if (error) console.error('Supabase delete wordbook error:', error);
+        } else if (targetWb) {
+          // If wordbook has non-UUID ID (e.g. sample data 'wb-wm-day15'), find matching Supabase rows and delete words & wordbook
+          let wbQuery = client.from('wordbooks').select('id').eq('title', targetWb.title).eq('chapter', targetWb.chapter);
+          if (isUuid(currentTutorId)) {
+            wbQuery = wbQuery.eq('tutor_id', currentTutorId);
+          }
+          const { data: matchingWbs } = await wbQuery;
+          if (matchingWbs && matchingWbs.length > 0) {
+            for (const m of matchingWbs) {
+              await client.from('words').delete().eq('wordbook_id', m.id);
+              await client.from('wordbooks').delete().eq('id', m.id);
+            }
+          }
+        }
       } catch (err) {
         console.warn('Error deleting from Supabase:', err);
       }
@@ -578,8 +524,8 @@ export const useVocaStore = create<VocaState>((set, get) => ({
     set({ wordbooks: updatedWbs, words: updatedWords, activeWordbookId: nextActive });
 
     if (typeof window !== 'undefined') {
-      localStorage.setItem('vocat_local_wordbooks', JSON.stringify(updatedWbs));
-      localStorage.setItem('vocat_local_words', JSON.stringify(updatedWords));
+      localStorage.setItem(getWbKey(currentTutorId), JSON.stringify(updatedWbs));
+      localStorage.setItem(getWordsKey(currentTutorId), JSON.stringify(updatedWords));
     }
   },
 
@@ -603,7 +549,7 @@ export const useVocaStore = create<VocaState>((set, get) => ({
           const updatedMap = { ...get().words, [wordbookId]: [...currentList, data] };
           set({ words: updatedMap });
           if (typeof window !== 'undefined') {
-            localStorage.setItem('vocat_local_words', JSON.stringify(updatedMap));
+            localStorage.setItem(getWordsKey(get().tutorId), JSON.stringify(updatedMap));
           }
           return data;
         }
@@ -617,7 +563,7 @@ export const useVocaStore = create<VocaState>((set, get) => ({
     set({ words: updatedMap });
 
     if (typeof window !== 'undefined') {
-      localStorage.setItem('vocat_local_words', JSON.stringify(updatedMap));
+      localStorage.setItem(getWordsKey(get().tutorId), JSON.stringify(updatedMap));
     }
     return newWord;
   },
@@ -639,7 +585,7 @@ export const useVocaStore = create<VocaState>((set, get) => ({
     set({ words: updatedMap });
 
     if (typeof window !== 'undefined') {
-      localStorage.setItem('vocat_local_words', JSON.stringify(updatedMap));
+      localStorage.setItem(getWordsKey(get().tutorId), JSON.stringify(updatedMap));
     }
   },
 
@@ -669,7 +615,7 @@ export const useVocaStore = create<VocaState>((set, get) => ({
     set({ words: updatedMap });
 
     if (typeof window !== 'undefined') {
-      localStorage.setItem('vocat_local_words', JSON.stringify(updatedMap));
+      localStorage.setItem(getWordsKey(get().tutorId), JSON.stringify(updatedMap));
     }
   },
 
@@ -785,13 +731,22 @@ export const useVocaStore = create<VocaState>((set, get) => ({
     }
   },
 
-  resetToSampleData: () => {
+  resetToSampleData: async () => {
+    const currentTId = get().tutorId;
     if (typeof window !== 'undefined') {
-      localStorage.removeItem('vocat_local_wordbooks');
-      localStorage.removeItem('vocat_local_words');
+      localStorage.removeItem(getWbKey(currentTId));
+      localStorage.removeItem(getWordsKey(currentTId));
       localStorage.removeItem('vocat_local_quiz_results');
       localStorage.removeItem('vocat_local_incorrect');
     }
-    get().loadInitialData();
+
+    const client = getSupabaseClient();
+    const isUserAuth = isUuid(currentTId);
+
+    if (client) {
+      await seedSampleDataToSupabase(client, isUserAuth ? currentTId : null);
+    }
+
+    await get().loadInitialData();
   }
 }));

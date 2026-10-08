@@ -6,10 +6,10 @@ import { Wordbook } from '@/types/database';
 import { WordbookFormModal } from '@/components/tutor/WordbookFormModal';
 import { WorksheetPrintModal } from '@/components/tutor/WorksheetPrintModal';
 import { WordEditModal } from '@/components/tutor/WordEditModal';
-import { Plus, Trash2, Printer, Search, Layers, ArrowRight, Edit3 } from 'lucide-react';
+import { Plus, Trash2, Printer, Search, Layers, ArrowRight, Edit3, RotateCcw } from 'lucide-react';
 
 export const WordbookList: React.FC = () => {
-  const { wordbooks, words, deleteWordbook, setActiveWordbookId, setUserRole } = useVocaStore();
+  const { wordbooks, words, deleteWordbook, setActiveWordbookId, setUserRole, resetToSampleData } = useVocaStore();
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [printModalWb, setPrintModalWb] = useState<Wordbook | null>(null);
@@ -60,8 +60,17 @@ export const WordbookList: React.FC = () => {
 
       {/* Grid List */}
       {filteredWordbooks.length === 0 ? (
-        <div className="p-8 sm:p-12 text-center rounded-2xl bg-white border border-dashed border-slate-300 text-slate-500 text-xs shadow-xs">
-          검색된 단어장이 없습니다. 상단 <strong>&apos;새 챕터 단어장 등록&apos;</strong> 버튼을 눌러 추가해주세요.
+        <div className="p-8 sm:p-12 text-center rounded-2xl bg-white border border-dashed border-slate-300 text-slate-500 text-xs shadow-xs space-y-3">
+          <p>
+            등록된 단어장이 없습니다. 상단 <strong>&apos;새 챕터 단어장 등록&apos;</strong> 버튼을 눌러 추가하거나, 아래 버튼으로 샘플 단어장을 불러오세요.
+          </p>
+          <button
+            onClick={() => resetToSampleData()}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-colors"
+          >
+            <RotateCcw className="w-3.5 h-3.5 text-blue-600" />
+            <span>기본 샘플 단어장(DAY 01, DAY 15, DAY 16) 불러오기</span>
+          </button>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
