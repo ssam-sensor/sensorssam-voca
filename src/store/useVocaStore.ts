@@ -60,42 +60,6 @@ const getWordsKey = (tutorId?: string | null) => `vocat_local_words_${tutorId ||
 
 let authListenerSubscribed = false;
 
-// Helper to seed sample data into connected Supabase DB when DB is empty
-async function seedSampleDataToSupabase(client: any, userId?: string | null) {
-  try {
-    const validTutorId = isUuid(userId) ? userId : null;
-    for (const wb of SAMPLE_WORDBOOKS) {
-      const { data: insertedWb, error: wbErr } = await client
-        .from('wordbooks')
-        .insert({
-          ...(validTutorId ? { tutor_id: validTutorId } : {}),
-          title: wb.title,
-          chapter: wb.chapter
-        })
-        .select()
-        .single();
-
-      if (!wbErr && insertedWb) {
-        const sampleWords = SAMPLE_WORDS[wb.id] || [];
-        const dbWords = sampleWords.map(w => ({
-          wordbook_id: insertedWb.id,
-          word: w.word,
-          pronunciation: w.pronunciation || null,
-          pos: w.pos || null,
-          meaning: w.meaning,
-          example_sentence: w.example_sentence || null,
-          example_translation: w.example_translation || null,
-          is_idiom: Boolean(w.is_idiom),
-          is_spelling_priority: Boolean(w.is_spelling_priority)
-        }));
-        await client.from('words').insert(dbWords);
-      }
-    }
-  } catch (err) {
-    console.warn('Failed seeding sample data to Supabase:', err);
-  }
-}
-
 export const useVocaStore = create<VocaState>((set, get) => ({
   userRole: 'student',
   userEmail: '',
@@ -778,21 +742,10 @@ export const useVocaStore = create<VocaState>((set, get) => ({
   },
 
   resetToSampleData: async () => {
-    const currentTId = get().tutorId;
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem(getWbKey(currentTId));
-      localStorage.removeItem(getWordsKey(currentTId));
-      localStorage.removeItem('vocat_local_quiz_results');
-      localStorage.removeItem('vocat_local_incorrect');
-    }
-
-    const client = getSupabaseClient();
-    const isUserAuth = isUuid(currentTId);
-
-    if (client) {
-      await seedSampleDataToSupabase(client, isUserAuth ? currentTId : null);
-    }
-
-    await get().loadInitialData();
+    set({
+      wordbooks: SAMPLE_WORDBOOKS,
+      words: SAMPLE_WORDS,
+      activeWordbookId: SAMPLE_WORDBOOKS[0]?.id || null
+    });
   }
 }));
