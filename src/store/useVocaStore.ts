@@ -303,10 +303,10 @@ export const useVocaStore = create<VocaState>((set, get) => ({
 
       try {
         const { data: authData } = await client.auth.getUser();
-        let isNewProfileCreated = false;
+        let userId = '';
 
         if (authData?.user) {
-          const userId = authData.user.id;
+          userId = authData.user.id;
           set({
             userEmail: authData.user.email || '',
             tutorId: userId,
@@ -321,7 +321,6 @@ export const useVocaStore = create<VocaState>((set, get) => ({
             .single();
 
           if (!profile) {
-            isNewProfileCreated = true;
             await client.from('profiles').upsert({
               id: userId,
               email: authData.user.email || '',
@@ -337,101 +336,135 @@ export const useVocaStore = create<VocaState>((set, get) => ({
               if (typeof window !== 'undefined') localStorage.setItem('vocat_invite_verified', 'true');
             }
           }
+        }
 
-          // Fetch registered tutors from profiles table where role = 'tutor'
-          const defaultTutor = { id: 'tutor-sensorssam', name: 'SensorSsam (대표 튜터)', title: 'AI 1:1 맞춤 어휘', avatarBg: 'bg-blue-600' };
-          try {
-            const { data: tutorProfiles } = await client
-              .from('profiles')
-              .select('*')
-              .eq('role', 'tutor');
-
-            let fullTutorList = [defaultTutor];
-            if (tutorProfiles && tutorProfiles.length > 0) {
-              const mappedTutors = tutorProfiles.map(p => {
-                const emailPrefix = p.email ? p.email.split('@')[0] : '';
-                const name = p.name || (emailPrefix ? `${emailPrefix} (등록 튜터)` : '등록 튜터');
-                return {
-                  id: p.id,
-                  name: name,
-                  title: p.email || '등록된 튜터 계정',
-                  avatarBg: 'bg-indigo-600'
-                };
-              });
-
-              const hasDefault = mappedTutors.some(t => t.id === 'tutor-sensorssam');
-              fullTutorList = hasDefault ? mappedTutors : [defaultTutor, ...mappedTutors];
-            }
-            set({ availableTutors: fullTutorList });
-
-            // Ensure linkedTutorIds only contains valid tutor IDs from fullTutorList
-            const validIds = fullTutorList.map(t => t.id);
-            const currentLinked = get().linkedTutorIds;
-            const cleanedLinked = currentLinked.filter(id => validIds.includes(id));
-            set({ linkedTutorIds: cleanedLinked.length > 0 ? cleanedLinked : validIds });
-          } catch (e) {
-            console.warn('Failed fetching registered tutor profiles:', e);
-            set({ availableTutors: [defaultTutor], linkedTutorIds: ['tutor-sensorssam'] });
-          }
-
-          // Query ALL wordbooks in Supabase so tutors share all wordbooks with each other!
-          const { data: wbData, error: wbErr } = await client
+        // 0. Clean up legacy dummy tutors from DB tables
+        try {
+          await client
             .from('wordbooks')
+            .update({ tutor_name: 'SensorSsam (대표 튜터)' })
+            .or('tutor_name.ilike.%이튜터%,tutor_name.ilike.%박튜터%,tutor_name.ilike.%최튜터%,tutor_name.ilike.%tutor-lee%,tutor_name.ilike.%tutor-park%,tutor_name.ilike.%tutor-choi%');
+
+          await client
+            .from('profiles')
+            .delete()
+            .or('id.ilike.%tutor-lee%,id.ilike.%tutor-park%,id.ilike.%tutor-choi%,email.ilike.%tutor-lee%,email.ilike.%tutor-park%,email.ilike.%tutor-choi%');
+        } catch (cleanupErr) {
+          console.warn('DB cleanup warning:', cleanupErr);
+        }
+
+        // 1. Fetch registered tutors from profiles table (excluding legacy dummy tutors)
+        const defaultTutor = { id: 'tutor-sensorssam', name: 'SensorSsam (대표 튜터)', title: 'AI 1:1 맞춤 어휘', avatarBg: 'bg-blue-600' };
+        try {
+          const { data: tutorProfiles } = await client
+            .from('profiles')
             .select('*')
-            .order('created_at', { ascending: false });
+            .eq('role', 'tutor');
 
-          if (!wbErr && wbData) {
-            let rawWbs: Wordbook[] = (wbData || []).map(wb => ({
-              ...wb,
-              tutor_name: wb.tutor_name || (wb.is_student_created ? '학생 (개인 단어장)' : 'SensorSsam (대표 튜터)')
-            }));
+          const realTutors = (tutorProfiles || []).filter(p => {
+            const str = ((p.email || '') + ' ' + (p.name || '') + ' ' + (p.id || '')).toLowerCase();
+            return !str.includes('이튜터') && !str.includes('박튜터') && !str.includes('최튜터') &&
+                   !str.includes('tutor-lee') && !str.includes('tutor-park') && !str.includes('tutor-choi');
+          });
 
-            set({ allWordbooks: rawWbs });
-
-            // Filter for student mode vs tutor mode
-            let activeWbs = rawWbs;
-            if (get().userRole === 'student') {
-              const selectedTutors = get().linkedTutorIds;
-              activeWbs = rawWbs.filter(wb => {
-                if (wb.is_student_created || wb.creator_role === 'student' || wb.tutor_id === userId) return true;
-                if (wb.tutor_id && selectedTutors.includes(wb.tutor_id)) return true;
-                if (wb.tutor_name && selectedTutors.some(tId => (wb.tutor_name || '').toLowerCase().includes(tId.toLowerCase()))) return true;
-                if (selectedTutors.includes('tutor-sensorssam') && (!wb.tutor_id || wb.tutor_name?.includes('SensorSsam'))) return true;
-                return false;
-              });
-            }
-
-            const wordsMap: Record<string, Word[]> = {};
-            for (const wb of rawWbs) {
-              const { data: wData } = await client.from('words').select('*').eq('wordbook_id', wb.id);
-              wordsMap[wb.id] = wData || [];
-            }
-
-            const { data: qrData } = await client.from('quiz_results').select('*').order('created_at', { ascending: false });
-            const { data: incData } = await client.from('incorrect_notes').select('*, word:words(*)');
-
-            set({
-              wordbooks: activeWbs,
-              words: wordsMap,
-              quizResults: qrData || [],
-              incorrectNotes: incData || [],
-              activeWordbookId: activeWbs[0]?.id || null,
-              isLoading: false
+          let fullTutorList = [defaultTutor];
+          if (realTutors.length > 0) {
+            const mappedTutors = realTutors.map(p => {
+              const emailPrefix = p.email ? p.email.split('@')[0] : '';
+              const name = p.name || (emailPrefix ? `${emailPrefix} (등록 튜터)` : '등록 튜터');
+              return {
+                id: p.id,
+                name: name,
+                title: p.email || '등록된 튜터 계정',
+                avatarBg: 'bg-indigo-600'
+              };
             });
 
+            const hasDefault = mappedTutors.some(t => t.id === 'tutor-sensorssam');
+            fullTutorList = hasDefault ? mappedTutors : [defaultTutor, ...mappedTutors];
+          }
+          set({ availableTutors: fullTutorList });
+
+          const validIds = fullTutorList.map(t => t.id);
+          const currentLinked = get().linkedTutorIds;
+          const cleanedLinked = currentLinked.filter(id => validIds.includes(id));
+          set({ linkedTutorIds: cleanedLinked.length > 0 ? cleanedLinked : validIds });
+        } catch (e) {
+          console.warn('Failed fetching registered tutor profiles:', e);
+          set({ availableTutors: [defaultTutor], linkedTutorIds: ['tutor-sensorssam'] });
+        }
+
+        // 2. Query ALL wordbooks in Supabase & sanitize legacy tutor names
+        const { data: wbData, error: wbErr } = await client
+          .from('wordbooks')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (!wbErr && wbData) {
+          let rawWbs: Wordbook[] = (wbData || []).map(wb => {
+            let tName = wb.tutor_name || '';
+            if (!tName || tName.includes('이튜터') || tName.includes('박튜터') || tName.includes('최튜터') ||
+                tName.includes('tutor-lee') || tName.includes('tutor-park') || tName.includes('tutor-choi')) {
+              tName = wb.is_student_created ? '학생 (개인 단어장)' : 'SensorSsam (대표 튜터)';
+            }
+            return {
+              ...wb,
+              tutor_name: tName
+            };
+          });
+
+          set({ allWordbooks: rawWbs });
+
+          let activeWbs = rawWbs;
+          if (get().userRole === 'student') {
+            const selectedTutors = get().linkedTutorIds;
+            activeWbs = rawWbs.filter(wb => {
+              if (wb.is_student_created || wb.creator_role === 'student' || (userId && wb.tutor_id === userId)) return true;
+              if (wb.tutor_id && selectedTutors.includes(wb.tutor_id)) return true;
+              if (selectedTutors.includes('tutor-sensorssam') && (!wb.tutor_id || wb.tutor_name?.includes('SensorSsam'))) return true;
+              return false;
+            });
+          }
+
+          const wordsMap: Record<string, Word[]> = {};
+          for (const wb of rawWbs) {
+            const { data: wData } = await client.from('words').select('*').eq('wordbook_id', wb.id);
+            wordsMap[wb.id] = wData || [];
+          }
+
+          const { data: qrData } = await client.from('quiz_results').select('*').order('created_at', { ascending: false });
+          const { data: incData } = await client.from('incorrect_notes').select('*, word:words(*)');
+
+          set({
+            wordbooks: activeWbs,
+            words: wordsMap,
+            quizResults: qrData || [],
+            incorrectNotes: incData || [],
+            activeWordbookId: activeWbs[0]?.id || null,
+            isLoading: false
+          });
+
+          if (userId) {
             const wbKey = getWbKey(userId);
             const wordsKey = getWordsKey(userId);
             if (typeof window !== 'undefined') {
               localStorage.setItem(wbKey, JSON.stringify(activeWbs));
               localStorage.setItem(wordsKey, JSON.stringify(wordsMap));
             }
-            return;
           }
+          return;
         }
       } catch (err) {
-        console.warn('Supabase auth check error:', err);
+        console.warn('Supabase initial load error:', err);
       }
     }
+
+    set({
+      wordbooks: [],
+      words: {},
+      activeWordbookId: null,
+      isLoading: false
+    });
 
     // Unauthenticated or unverified visitors: NO DEMO WORD DATA!
     set({
