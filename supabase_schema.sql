@@ -14,6 +14,11 @@ create table if not exists profiles (
   created_at timestamp with time zone default timezone('utc'::text, now())
 );
 
+-- 기존 profiles 테이블이 다른 앱에서 이미 생성되어 있더라도 안전하게 필요한 컬럼 추가
+alter table profiles add column if not exists role text default 'student';
+alter table profiles add column if not exists is_verified boolean default false;
+alter table profiles add column if not exists gemini_api_key text;
+
 -- 2. 튜터-학생 N:M (다대다) 매핑 연결 테이블
 create table if not exists tutor_students (
   tutor_id uuid references profiles(id) on delete cascade,
