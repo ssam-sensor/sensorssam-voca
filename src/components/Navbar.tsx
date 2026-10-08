@@ -24,16 +24,22 @@ export const Navbar: React.FC = () => {
   return (
     <>
       <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur-md text-slate-800 shadow-xs">
-        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-14 sm:h-16 flex items-center justify-between gap-2">
+        <div className="max-w-7xl mx-auto px-2.5 sm:px-6 lg:px-8 h-14 sm:h-16 flex items-center justify-between gap-1.5 sm:gap-3">
           
           {/* Logo & Brand */}
-          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-            <div className="p-2 sm:p-2.5 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-500/20">
+          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+            <div className="p-1.5 sm:p-2.5 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-500/20 shrink-0">
               <BookOpen className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
             <div>
-              <div className="flex items-center gap-1.5 sm:gap-2">
-                <span className="font-extrabold text-sm sm:text-lg tracking-tight text-slate-800">
+              {/* Mobile 2-line layout */}
+              <div className="sm:hidden flex flex-col leading-none">
+                <span className="font-extrabold text-[12px] text-slate-800 tracking-tight">SensorSsam</span>
+                <span className="font-black text-[10px] text-blue-600 tracking-wider uppercase mt-0.5">VOCA</span>
+              </div>
+              {/* Desktop 1-line layout */}
+              <div className="hidden sm:flex items-center gap-2">
+                <span className="font-extrabold text-lg tracking-tight text-slate-800">
                   SensorSsam Voca
                 </span>
                 <span className="hidden xs:inline-block text-[10px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200">
@@ -47,10 +53,10 @@ export const Navbar: React.FC = () => {
           </div>
 
           {/* Center: Role Switcher Pill (Compact on Mobile) */}
-          <div className="flex items-center bg-slate-100 p-0.5 sm:p-1 rounded-xl border border-slate-200 shadow-inner">
+          <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200 shadow-inner shrink-0">
             <button
               onClick={() => setUserRole('tutor')}
-              className={`flex items-center gap-1 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              className={`flex items-center gap-1 px-2 sm:px-3.5 py-1 sm:py-1.5 rounded-lg text-xs font-bold transition-all ${
                 userRole === 'tutor'
                   ? 'bg-blue-600 text-white shadow-sm'
                   : 'text-slate-600 hover:text-slate-800 hover:bg-slate-200/60'
@@ -63,7 +69,7 @@ export const Navbar: React.FC = () => {
 
             <button
               onClick={() => setUserRole('student')}
-              className={`flex items-center gap-1 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              className={`flex items-center gap-1 px-2 sm:px-3.5 py-1 sm:py-1.5 rounded-lg text-xs font-bold transition-all ${
                 userRole === 'student'
                   ? 'bg-emerald-600 text-white shadow-sm'
                   : 'text-slate-600 hover:text-slate-800 hover:bg-slate-200/60'
@@ -76,7 +82,7 @@ export const Navbar: React.FC = () => {
           </div>
 
           {/* Right: Settings & Google Auth */}
-          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+          <div className="flex items-center gap-1 sm:gap-3 shrink-0">
             {/* DB Status Indicator */}
             {settings.isCustomSupabaseConnected ? (
               <span className="hidden lg:inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-300">
@@ -105,7 +111,7 @@ export const Navbar: React.FC = () => {
             {/* Settings Button */}
             <button
               onClick={() => setIsSettingsOpen(true)}
-              className="p-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 transition-colors relative group shadow-xs"
+              className="p-1.5 sm:p-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 transition-colors relative group shadow-xs shrink-0"
               title="BYO Settings (Gemini & Supabase)"
             >
               <Settings className="w-4 h-4 group-hover:rotate-45 transition-transform duration-300" />
@@ -117,7 +123,8 @@ export const Navbar: React.FC = () => {
             {/* Google OAuth Simulation Button */}
             <button
               onClick={handleAuthToggle}
-              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-100 text-xs font-semibold text-slate-800 transition-colors shadow-xs"
+              className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-100 text-xs font-semibold text-slate-800 transition-colors shadow-xs shrink-0 max-w-[110px] sm:max-w-none"
+              title={!isGuest ? userEmail : '구글 로그인'}
             >
               <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24">
                 <path
@@ -137,7 +144,12 @@ export const Navbar: React.FC = () => {
                   d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
                 />
               </svg>
-              <span className="hidden md:inline">{!isGuest ? userEmail.split('@')[0] : '구글 로그인'}</span>
+              <span className="hidden sm:inline font-bold truncate">
+                {!isGuest ? userEmail.split('@')[0] : '구글 로그인'}
+              </span>
+              <span className="sm:hidden font-bold truncate max-w-[50px]">
+                {!isGuest ? userEmail.split('@')[0] : '로그인'}
+              </span>
               {!isGuest ? (
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
               ) : (
