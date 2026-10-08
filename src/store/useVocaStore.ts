@@ -98,11 +98,22 @@ export const useVocaStore = create<VocaState>((set, get) => ({
     const selectedTutors = selectedTutorIds || get().linkedTutorIds;
     const allWbs = get().allWordbooks;
     const userId = get().studentId;
+    const localStudentWbIds: string[] = typeof window !== 'undefined'
+      ? JSON.parse(localStorage.getItem('vocat_student_wb_ids') || '[]')
+      : [];
 
     let filtered = allWbs;
     if (get().userRole === 'student') {
       filtered = allWbs.filter(wb => {
-        if (wb.is_student_created || wb.creator_role === 'student' || wb.tutor_name === '학생 (개인 단어장)' || (userId && wb.tutor_id === userId && get().accountRole === 'student')) return true;
+        const isStudentCreated = Boolean(
+          wb.is_student_created ||
+          wb.creator_role === 'student' ||
+          localStudentWbIds.includes(wb.id) ||
+          (wb.tutor_name && (wb.tutor_name.includes('학생') || wb.tutor_name.includes('개인'))) ||
+          (userId && wb.tutor_id === userId)
+        );
+
+        if (isStudentCreated) return true;
         if (wb.tutor_id && selectedTutors.includes(wb.tutor_id)) return true;
         if (wb.tutor_name && selectedTutors.some(tId => (wb.tutor_name || '').toLowerCase().includes(tId.toLowerCase()))) return true;
         if (selectedTutors.includes('tutor-sensorssam') && (!wb.tutor_id || wb.tutor_name?.includes('SensorSsam'))) return true;
@@ -126,16 +137,44 @@ export const useVocaStore = create<VocaState>((set, get) => ({
 
   updateProfileName: async (name: string) => {
     const nickname = (name || '').trim();
-    const userId = get().tutorId || get().studentId;
+    if (!nickname) return;
+
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('vocat_user_name', nickname);
+    }
+    set({ userName: nickname });
+
     const client = getSupabaseClient();
-    if (client && userId) {
+    if (client) {
       try {
-        await client.from('profiles').update({ name: nickname }).eq('id', userId);
+        const { data: authData } = await client.auth.getUser();
+        const userId = authData?.user?.id || get().tutorId || get().studentId;
+
+        if (userId && isUuid(userId)) {
+          const userEmail = authData?.user?.email || get().userEmail || '';
+          const role = get().accountRole || get().userRole || 'tutor';
+
+          const { error } = await client.from('profiles').upsert({
+            id: userId,
+            email: userEmail,
+            name: nickname,
+            role: role,
+            is_verified: true,
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'id' });
+
+          if (error) {
+            console.warn('Upsert profile name failed, attempting update:', error);
+            await client.from('profiles').update({ name: nickname }).eq('id', userId);
+          }
+        }
       } catch (err) {
         console.warn('Profile name update error:', err);
       }
     }
-    set({ userName: nickname });
+
+    // Refresh initial data so available tutors list and displays update immediately
+    await get().loadInitialData();
   },
 
   verifyInviteCode: async (code: string, role: UserRole, name?: string) => {
@@ -292,13 +331,15 @@ export const useVocaStore = create<VocaState>((set, get) => ({
     set({ isLoading: true });
     get().loadSettings();
 
-    // Load verification state & saved user role
+    // Load verification state & saved user role & saved name
     if (typeof window !== 'undefined') {
       const isVerified = localStorage.getItem('vocat_invite_verified') === 'true';
       const storedRole = localStorage.getItem('vocat_user_role') as UserRole;
+      const storedName = localStorage.getItem('vocat_user_name') || '';
       set({
         isVerifiedWithInviteCode: isVerified,
-        userRole: storedRole || get().userRole
+        userRole: storedRole || get().userRole,
+        userName: storedName || get().userName
       });
     }
 
@@ -429,12 +470,17 @@ export const useVocaStore = create<VocaState>((set, get) => ({
           .order('created_at', { ascending: false });
 
         if (!wbErr && wbData) {
+          const localStudentWbIds: string[] = typeof window !== 'undefined'
+            ? JSON.parse(localStorage.getItem('vocat_student_wb_ids') || '[]')
+            : [];
+
           let rawWbs: Wordbook[] = (wbData || []).map(wb => {
             const isStudentCreated = Boolean(
               wb.is_student_created ||
               wb.creator_role === 'student' ||
-              wb.tutor_name === '학생 (개인 단어장)' ||
-              (userId && wb.tutor_id === userId && get().accountRole === 'student')
+              localStudentWbIds.includes(wb.id) ||
+              (wb.tutor_name && (wb.tutor_name.includes('학생') || wb.tutor_name.includes('개인'))) ||
+              (userId && wb.tutor_id === userId)
             );
 
             let tName = wb.tutor_name || '';
@@ -456,10 +502,17 @@ export const useVocaStore = create<VocaState>((set, get) => ({
           if (get().userRole === 'student') {
             const selectedTutors = get().linkedTutorIds;
             activeWbs = rawWbs.filter(wb => {
-              if (wb.is_student_created || wb.creator_role === 'student' || wb.tutor_name === '학생 (개인 단어장)' || (userId && wb.tutor_id === userId && get().accountRole === 'student')) {
-                return true;
-              }
+              const isStudentCreated = Boolean(
+                wb.is_student_created ||
+                wb.creator_role === 'student' ||
+                localStudentWbIds.includes(wb.id) ||
+                (wb.tutor_name && (wb.tutor_name.includes('학생') || wb.tutor_name.includes('개인'))) ||
+                (userId && wb.tutor_id === userId)
+              );
+
+              if (isStudentCreated) return true;
               if (wb.tutor_id && selectedTutors.includes(wb.tutor_id)) return true;
+              if (wb.tutor_name && selectedTutors.some(tId => (wb.tutor_name || '').toLowerCase().includes(tId.toLowerCase()))) return true;
               if (selectedTutors.includes('tutor-sensorssam') && (!wb.tutor_id || wb.tutor_name?.includes('SensorSsam'))) return true;
               return false;
             });
@@ -570,6 +623,18 @@ export const useVocaStore = create<VocaState>((set, get) => ({
             words_count: (insertedWords || []).length
           };
 
+          if (isStudent && typeof window !== 'undefined' && insertedWb?.id) {
+            try {
+              const existing = JSON.parse(localStorage.getItem('vocat_student_wb_ids') || '[]');
+              if (!existing.includes(insertedWb.id)) {
+                existing.push(insertedWb.id);
+                localStorage.setItem('vocat_student_wb_ids', JSON.stringify(existing));
+              }
+            } catch (e) {
+              console.warn('Error updating vocat_student_wb_ids:', e);
+            }
+          }
+
           const updatedAllWbs = [newWbObj, ...get().allWordbooks];
           const updatedWbs = [newWbObj, ...get().wordbooks];
           const updatedWords = { ...get().words, [insertedWb.id]: insertedWords || [] };
@@ -602,6 +667,18 @@ export const useVocaStore = create<VocaState>((set, get) => ({
       created_at: new Date().toISOString(),
       words_count: batchWords.length
     };
+
+    if (isStudent && typeof window !== 'undefined' && newWbId) {
+      try {
+        const existing = JSON.parse(localStorage.getItem('vocat_student_wb_ids') || '[]');
+        if (!existing.includes(newWbId)) {
+          existing.push(newWbId);
+          localStorage.setItem('vocat_student_wb_ids', JSON.stringify(existing));
+        }
+      } catch (e) {
+        console.warn('Error updating vocat_student_wb_ids:', e);
+      }
+    }
 
     const newWords: Word[] = batchWords.map((item, idx) => ({
       id: `w-${newWbId}-${idx}`,

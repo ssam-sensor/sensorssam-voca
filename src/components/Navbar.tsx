@@ -1,11 +1,16 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useVocaStore } from '@/store/useVocaStore';
-import { BookOpen, User, GraduationCap, LogIn, ShieldCheck } from 'lucide-react';
+import { BookOpen, User, GraduationCap, LogIn, ShieldCheck, Edit3, X, Check } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
-  const { accountRole, userRole, setUserRole, userEmail, userName, signInWithGoogle, signOutUser } = useVocaStore();
+  const { accountRole, userRole, setUserRole, userEmail, userName, updateProfileName, signInWithGoogle, signOutUser } = useVocaStore();
+
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [inputName, setInputName] = useState(userName || '');
+  const [isSaving, setIsSaving] = useState(false);
+  const [showSuccessToast, setShowSuccessToast] = useState(false);
 
   const isLoggedIn = Boolean(userEmail);
 
@@ -16,6 +21,33 @@ export const Navbar: React.FC = () => {
       }
     } else {
       await signInWithGoogle();
+    }
+  };
+
+  const handleOpenNicknameModal = () => {
+    setInputName(userName || '');
+    setIsModalOpen(true);
+  };
+
+  const handleSaveNickname = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const val = inputName.trim();
+    if (!val) {
+      alert('별명(닉네임)을 입력해주세요.');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await updateProfileName(val);
+      setIsModalOpen(false);
+      setShowSuccessToast(true);
+      setTimeout(() => setShowSuccessToast(false), 3000);
+    } catch (err) {
+      console.error('Failed to save nickname:', err);
+      alert('별명 저장 중 오류가 발생했습니다.');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -101,17 +133,12 @@ export const Navbar: React.FC = () => {
 
               {/* Edit Nickname Quick Button */}
               <button
-                onClick={async () => {
-                  const current = userName || '';
-                  const input = prompt('화면에 표시할 별명(닉네임)을 입력하세요:', current);
-                  if (input !== null && input.trim()) {
-                    await useVocaStore.getState().updateProfileName(input.trim());
-                  }
-                }}
-                className="text-[10px] font-bold text-slate-500 hover:text-blue-600 underline"
+                onClick={handleOpenNicknameModal}
+                className="flex items-center gap-1 text-[11px] font-extrabold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded-lg border border-blue-200 transition-colors"
                 title="별명/닉네임 변경"
               >
-                [별명 수정]
+                <Edit3 className="w-3 h-3" />
+                <span>{userName ? `별명: ${userName}` : '[별명 등록]'}</span>
               </button>
             </div>
           )}
@@ -153,6 +180,75 @@ export const Navbar: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Nickname Edit Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-5 sm:p-6 shadow-2xl border border-slate-100 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-sm font-extrabold text-slate-800 flex items-center gap-2">
+                <Edit3 className="w-4 h-4 text-blue-600" />
+                <span>별명(닉네임) 설정 & 저장</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-500 font-medium leading-relaxed">
+              튜터 및 학생 목록, 단어장에서 노출될 별명을 입력해 주세요.<br />
+              <span className="text-blue-600 font-bold">* 이메일 주소는 타인에게 일절 노출되지 않습니다.</span>
+            </p>
+
+            <form onSubmit={handleSaveNickname} className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700 block">
+                  새 별명 입력
+                </label>
+                <input
+                  type="text"
+                  value={inputName}
+                  onChange={(e) => setInputName(e.target.value)}
+                  placeholder="예: 센서쌤, 열공학생, EnglishMaster"
+                  maxLength={20}
+                  autoFocus
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors"
+                >
+                  취소
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSaving}
+                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-sm transition-all active:scale-95 disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  <span>{isSaving ? '저장 중...' : '별명 저장하기'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Success Toast */}
+      {showSuccessToast && (
+        <div className="fixed bottom-5 right-5 z-50 bg-emerald-600 text-white px-4 py-3 rounded-2xl shadow-lg text-xs font-bold flex items-center gap-2 animate-in slide-in-from-bottom-5 duration-200">
+          <Check className="w-4 h-4 text-emerald-200" />
+          <span>별명이 성공적으로 저장되어 반영되었습니다!</span>
+        </div>
+      )}
     </header>
   );
 };
