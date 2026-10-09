@@ -93,14 +93,42 @@ export const useVocaStore = create<VocaState>((set, get) => ({
   linkedStudentIds: [],
   isVerifiedWithInviteCode: false,
 
-  toggleLinkedTutorId: (tutorId: string) => {
+  toggleLinkedTutorId: async (tutorId: string) => {
     const current = get().linkedTutorIds;
     const exists = current.includes(tutorId);
     const updated = exists ? current.filter(id => id !== tutorId) : [...current, tutorId];
     set({ linkedTutorIds: updated });
+
     if (typeof window !== 'undefined') {
       localStorage.setItem('vocat_linked_tutor_ids', JSON.stringify(updated));
     }
+
+    const client = getSupabaseClient();
+    const studentId = get().studentId;
+
+    if (client && isUuid(studentId) && isUuid(tutorId)) {
+      try {
+        if (!exists) {
+          // Add row to tutor_students table in Supabase DB
+          await client.from('tutor_students').upsert({
+            tutor_id: tutorId,
+            student_id: studentId,
+            created_at: new Date().toISOString()
+          }, { onConflict: 'tutor_id,student_id' });
+          console.log(`DB tutor_students link added: student=${studentId}, tutor=${tutorId}`);
+        } else {
+          // Delete row from tutor_students table in Supabase DB
+          await client.from('tutor_students')
+            .delete()
+            .eq('tutor_id', tutorId)
+            .eq('student_id', studentId);
+          console.log(`DB tutor_students link removed: student=${studentId}, tutor=${tutorId}`);
+        }
+      } catch (err) {
+        console.warn('Error updating tutor_students DB link:', err);
+      }
+    }
+
     // Instantly re-filter wordbooks for student view!
     get().filterWordbooksForStudent(updated);
   },
@@ -510,10 +538,43 @@ export const useVocaStore = create<VocaState>((set, get) => ({
             });
             set({ availableTutors: mappedTutors });
 
-            const validIds = mappedTutors.map(t => t.id);
-            const currentLinked = get().linkedTutorIds;
-            const cleanedLinked = currentLinked.filter(id => validIds.includes(id));
-            set({ linkedTutorIds: cleanedLinked.length > 0 ? cleanedLinked : validIds });
+            const validTutorIds = mappedTutors.map(t => t.id);
+
+            // Fetch student's actual linked tutors from DB tutor_students table!
+            let dbLinkedTutorIds: string[] = [];
+            if (userId && isUuid(userId)) {
+              try {
+                const { data: dbLinks } = await client
+                  .from('tutor_students')
+                  .select('tutor_id')
+                  .eq('student_id', userId);
+                if (dbLinks && dbLinks.length > 0) {
+                  dbLinkedTutorIds = dbLinks.map((l: any) => l.tutor_id).filter((id: string) => validTutorIds.includes(id));
+                }
+              } catch (dbErr) {
+                console.warn('Failed querying tutor_students from DB:', dbErr);
+              }
+            }
+
+            // If DB links exist, use them. Otherwise check localStorage. For brand new students, default is [] (EMPTY ARRAY)!
+            const savedLocal = typeof window !== 'undefined' ? localStorage.getItem('vocat_linked_tutor_ids') : null;
+            let activeLinkedIds: string[] = [];
+
+            if (dbLinkedTutorIds.length > 0) {
+              activeLinkedIds = dbLinkedTutorIds;
+            } else if (savedLocal !== null) {
+              try {
+                const parsed = JSON.parse(savedLocal);
+                activeLinkedIds = Array.isArray(parsed) ? parsed.filter(id => validTutorIds.includes(id)) : [];
+              } catch (e) {
+                activeLinkedIds = [];
+              }
+            } else {
+              // Brand new student: NO TUTORS LINKED BY DEFAULT!
+              activeLinkedIds = [];
+            }
+
+            set({ linkedTutorIds: activeLinkedIds });
           } else {
             set({ availableTutors: [], linkedTutorIds: [] });
           }
