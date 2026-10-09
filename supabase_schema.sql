@@ -88,6 +88,22 @@ alter table quiz_results enable row level security;
 alter table incorrect_notes enable row level security;
 
 -- Permissive policies for authenticated and anon users (allowing BYO DB & dynamic access)
+drop policy if exists "Public profile access" on profiles;
+drop policy if exists "Users can update own profile" on profiles;
+drop policy if exists "Users can insert own profile" on profiles;
+
+drop policy if exists "Public tutor_students select" on tutor_students;
+drop policy if exists "Tutors can manage tutor_students" on tutor_students;
+
+drop policy if exists "Public wordbooks select" on wordbooks;
+drop policy if exists "Tutors can manage wordbooks" on wordbooks;
+
+drop policy if exists "Public words select" on words;
+drop policy if exists "Tutors can manage words" on words;
+
+drop policy if exists "Public quiz results" on quiz_results;
+drop policy if exists "Public incorrect notes" on incorrect_notes;
+
 create policy "Public profile access" on profiles for select using (true);
 create policy "Users can update own profile" on profiles for update using (auth.uid() = id);
 create policy "Users can insert own profile" on profiles for insert with check (auth.uid() = id);
