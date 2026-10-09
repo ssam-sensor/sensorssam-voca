@@ -2,10 +2,10 @@
 
 import React, { useState } from 'react';
 import { useVocaStore } from '@/store/useVocaStore';
-import { BookOpen, User, GraduationCap, LogIn, ShieldCheck, Edit3, X, Check, FileSpreadsheet } from 'lucide-react';
+import { BookOpen, User, GraduationCap, LogIn, ShieldCheck, Edit3, X, Check } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
-  const { accountRole, userRole, setUserRole, userEmail, userName, updateProfileName, signInWithGoogle, signOutUser, openStudentReport } = useVocaStore();
+  const { accountRole, userRole, setUserRole, userEmail, userName, updateProfileName, signInWithGoogle, signOutUser } = useVocaStore();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [inputName, setInputName] = useState(userName || '');
@@ -119,18 +119,6 @@ export const Navbar: React.FC = () => {
 
         {/* Right: Google OAuth Button & Role Badge */}
         <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
-          {userRole === 'student' && (
-            <button
-              onClick={openStudentReport}
-              className="flex items-center gap-1.5 text-xs font-extrabold text-blue-700 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-xl border border-blue-300 shadow-2xs transition-all active:scale-95 cursor-pointer"
-              title="나의 학습 결과 및 출석 보고서 조회"
-            >
-              <FileSpreadsheet className="w-4 h-4 text-blue-600 shrink-0" />
-              <span className="hidden sm:inline">나의 학습 결과 리포트</span>
-              <span className="sm:hidden">학습 리포트</span>
-            </button>
-          )}
-
           {isLoggedIn && (
             <button
               onClick={handleOpenNicknameModal}
