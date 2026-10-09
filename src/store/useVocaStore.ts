@@ -15,6 +15,7 @@ interface VocaState {
   linkedTutorIds: string[];
   linkedStudentIds: string[];
   availableTutors: { id: string; name: string; title: string; avatarBg: string }[];
+  availableStudents: { id: string; name: string; email: string }[];
   toggleLinkedTutorId: (tutorId: string) => void;
   isVerifiedWithInviteCode: boolean;
   setUserRole: (role: UserRole) => void;
@@ -89,6 +90,7 @@ export const useVocaStore = create<VocaState>((set, get) => ({
   tutorId: '',
   studentId: '',
   availableTutors: [],
+  availableStudents: [],
   linkedTutorIds: [],
   linkedStudentIds: [],
   isVerifiedWithInviteCode: false,
@@ -599,6 +601,30 @@ export const useVocaStore = create<VocaState>((set, get) => ({
         } catch (e) {
           console.warn('Failed fetching registered tutor profiles:', e);
           set({ availableTutors: [], linkedTutorIds: [] });
+        }
+
+        // 1.5 Fetch registered student profiles from profiles table
+        try {
+          const { data: studentProfiles } = await client
+            .from('profiles')
+            .select('*')
+            .or('role.eq.student,role.is.null');
+
+          const mappedStudents = (studentProfiles || []).map(p => {
+            const nameStr = (p.name || '').trim();
+            const emailStr = (p.email || '').trim();
+            const displayName = nameStr || (emailStr ? emailStr.split('@')[0] : `학생 (${p.id.slice(0, 6)})`);
+            return {
+              id: p.id,
+              name: displayName,
+              email: emailStr
+            };
+          });
+
+          set({ availableStudents: mappedStudents });
+        } catch (e) {
+          console.warn('Failed fetching registered student profiles:', e);
+          set({ availableStudents: [] });
         }
 
         // 2. Query ALL wordbooks in Supabase & sanitize legacy tutor names
