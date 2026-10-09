@@ -87,20 +87,84 @@ async function callGeminiWithFallback(
 }
 
 /**
+ * Compresses large camera photos before sending to Gemini API route
+ * Prevents 413 Payload Too Large / Network Timeouts
+ */
+export async function compressImageBase64(
+  base64Data: string,
+  mimeType: string
+): Promise<{ base64Data: string; mimeType: string }> {
+  if (typeof window === 'undefined' || !mimeType || !mimeType.startsWith('image/')) {
+    return { base64Data, mimeType };
+  }
+
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const maxDim = 1600;
+      let width = img.width;
+      let height = img.height;
+
+      if (width <= maxDim && height <= maxDim && base64Data.length < 1000000) {
+        return resolve({ base64Data, mimeType });
+      }
+
+      if (width > height) {
+        if (width > maxDim) {
+          height = Math.round((height * maxDim) / width);
+          width = maxDim;
+        }
+      } else {
+        if (height > maxDim) {
+          width = Math.round((width * maxDim) / height);
+          height = maxDim;
+        }
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return resolve({ base64Data, mimeType });
+
+      ctx.drawImage(img, 0, 0, width, height);
+      const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+      const compressedBase64 = compressedDataUrl.split(',')[1] || base64Data;
+      resolve({ base64Data: compressedBase64, mimeType: 'image/jpeg' });
+    };
+
+    img.onerror = () => resolve({ base64Data, mimeType });
+    img.src = `data:${mimeType};base64,${base64Data}`;
+  });
+}
+
+/**
  * Helper function to call server-side Next.js API route (/api/gemini)
  */
 async function callServerGeminiApi(payload: any): Promise<any> {
-  const customApiKey = typeof window !== 'undefined' ? localStorage.getItem('vocat_gemini_api_key') : null;
-  const res = await fetch('/api/gemini', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      ...payload,
-      customApiKey: customApiKey || undefined
-    })
-  });
+  const customApiKey = getGeminiApiKey();
+  let res: Response;
+  try {
+    res = await fetch('/api/gemini', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...payload,
+        customApiKey: customApiKey || undefined
+      })
+    });
+  } catch (netErr: any) {
+    throw new Error('웹 서버에 연결할 수 없습니다. 인터넷 네트워크 연결 상태를 확인해 주세요.');
+  }
 
-  const data = await res.json();
+  let data: any = {};
+  try {
+    data = await res.json();
+  } catch (e) {
+    throw new Error(`서버 응답 오류 (HTTP ${res.status}): 요청 처리 중 오류가 발생했습니다.`);
+  }
+
   if (!res.ok || data.error) {
     throw new Error(data.error || 'Gemini AI 서비스 처리 중 오류가 발생했습니다.');
   }
@@ -116,10 +180,11 @@ export async function extractWordsFromMultimodalFile(
   mimeType: string,
   mode: 'all' | 'marked' = 'all'
 ): Promise<string> {
+  const compressed = await compressImageBase64(base64Data, mimeType);
   const data = await callServerGeminiApi({
     action: 'extract_multimodal',
-    base64Data,
-    mimeType,
+    base64Data: compressed.base64Data,
+    mimeType: compressed.mimeType,
     mode
   });
   return data.result || '';
