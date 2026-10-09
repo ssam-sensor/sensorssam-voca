@@ -82,3 +82,12 @@ export interface VocaBatchItem {
   is_spelling_priority?: boolean;
   is_idiom?: boolean;
 }
+
+export interface StudyLog {
+  id: string;
+  student_id: string;
+  study_date: string; // YYYY-MM-DD
+  duration_seconds: number;
+  created_at?: string;
+}
+

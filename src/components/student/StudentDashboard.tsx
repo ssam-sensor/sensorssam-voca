@@ -7,6 +7,7 @@ import { FlashcardStudy } from '@/components/student/FlashcardStudy';
 import { QuizSuite } from '@/components/student/QuizSuite';
 import { IncorrectNotesView } from '@/components/student/IncorrectNotesView';
 import { WordbookFormModal } from '@/components/tutor/WordbookFormModal';
+import { StudentReportModal } from '@/components/tutor/StudentReportModal';
 import {
   BookOpen,
   Sparkles,
@@ -17,7 +18,8 @@ import {
   Lock,
   CheckSquare,
   Square,
-  Users
+  Users,
+  FileSpreadsheet
 } from 'lucide-react';
 
 export const StudentDashboard: React.FC = () => {
@@ -30,13 +32,15 @@ export const StudentDashboard: React.FC = () => {
     deleteWordbook,
     availableTutors,
     linkedTutorIds,
-    toggleLinkedTutorId
+    toggleLinkedTutorId,
+    userName
   } = useVocaStore();
 
   const [activeTab, setActiveTab] = useState<'study' | 'quiz' | 'incorrect'>('study');
   const [quizMode, setQuizMode] = useState<'standard' | 'ai'>('standard');
   const [customQuizWords, setCustomQuizWords] = useState<Word[] | null>(null);
   const [isFormModalOpen, setIsFormModalOpen] = useState<boolean>(false);
+  const [isReportOpen, setIsReportOpen] = useState<boolean>(false);
 
   const selectedWb = wordbooks.find(w => w.id === activeWordbookId) || wordbooks[0];
   const currentWords = words[selectedWb?.id] || [];
@@ -106,13 +110,22 @@ export const StudentDashboard: React.FC = () => {
             </div>
           </div>
 
-          <button
-            onClick={() => setIsFormModalOpen(true)}
-            className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm transition-all active:scale-95 shrink-0"
-          >
-            <Plus className="w-4 h-4" />
-            <span>학생 스스로 새 단어장 등록</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsReportOpen(true)}
+              className="flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs border border-slate-200 transition-all active:scale-95"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-blue-600" />
+              <span>나의 학습 결과 및 보고서</span>
+            </button>
+            <button
+              onClick={() => setIsFormModalOpen(true)}
+              className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm transition-all active:scale-95 shrink-0"
+            >
+              <Plus className="w-4 h-4" />
+              <span>학생 스스로 새 단어장 등록</span>
+            </button>
+          </div>
         </div>
 
         {/* Tutor Checkboxes Carousel */}
@@ -182,13 +195,20 @@ export const StudentDashboard: React.FC = () => {
               </p>
             </div>
 
-            <div className="w-full sm:w-auto flex items-center gap-2">
+            <div className="w-full sm:w-auto flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => setIsReportOpen(true)}
+                className="flex items-center justify-center gap-1.5 px-4 py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs border border-slate-200 transition-all active:scale-95"
+              >
+                <FileSpreadsheet className="w-4 h-4 text-blue-600" />
+                <span>학습 결과 리포트</span>
+              </button>
               <button
                 onClick={() => {
                   setQuizMode('ai');
                   setActiveTab('quiz');
                 }}
-                className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-xs shadow-md transition-all active:scale-95"
+                className="flex items-center justify-center gap-2 px-6 py-3 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-xs shadow-md transition-all active:scale-95"
               >
                 <Sparkles className="w-4 h-4 text-amber-300" />
                 <span>AI 테스트 치르기 (고난도 1/3)</span>
@@ -318,6 +338,13 @@ export const StudentDashboard: React.FC = () => {
       <WordbookFormModal
         isOpen={isFormModalOpen}
         onClose={() => setIsFormModalOpen(false)}
+      />
+
+      {/* Student Self Report Modal */}
+      <StudentReportModal
+        isOpen={isReportOpen}
+        onClose={() => setIsReportOpen(false)}
+        studentName={userName || '학생'}
       />
     </div>
   );

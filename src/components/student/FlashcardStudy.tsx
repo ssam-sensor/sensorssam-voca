@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Word } from '@/types/database';
 import { speakText } from '@/lib/audio';
+import { useStudyTimer } from '@/hooks/useStudyTimer';
 import { Volume2, Eye, EyeOff, RotateCw, Play, Pause, ChevronLeft, ChevronRight, Sparkles, Gauge } from 'lucide-react';
 
 interface FlashcardStudyProps {
@@ -12,6 +13,9 @@ interface FlashcardStudyProps {
 }
 
 export const FlashcardStudy: React.FC<FlashcardStudyProps> = ({ words, onBack, onStartQuiz }) => {
+  // Track active study duration with 3-min idle threshold
+  useStudyTimer(true);
+
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
 

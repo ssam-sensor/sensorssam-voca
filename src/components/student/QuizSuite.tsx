@@ -6,6 +6,7 @@ import { Word, Wordbook } from '@/types/database';
 import { useVocaStore } from '@/store/useVocaStore';
 import { speakText } from '@/lib/audio';
 import { gradeStudentAnswerWithGemini } from '@/lib/gemini';
+import { useStudyTimer } from '@/hooks/useStudyTimer';
 import { Sparkles, Volume2, Award, ArrowRight, RotateCw, X, ChevronRight, Loader2, CheckCircle2, XCircle } from 'lucide-react';
 
 interface QuizSuiteProps {
@@ -24,6 +25,9 @@ export const QuizSuite: React.FC<QuizSuiteProps> = ({ wordbook, words, onFinish,
   const { recordQuizResult } = useVocaStore();
 
   const [stage, setStage] = useState<'intro' | 'quiz' | 'result'>('intro');
+
+  // Track active study duration while taking quiz
+  useStudyTimer(stage === 'quiz');
   const [currentStep, setCurrentStep] = useState(0);
 
   // User input states

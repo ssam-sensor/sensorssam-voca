@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Wordbook, Word, QuizResult, IncorrectNote, UserRole, SettingsConfig, VocaBatchItem } from '@/types/database';
+import { Wordbook, Word, QuizResult, IncorrectNote, UserRole, SettingsConfig, VocaBatchItem, StudyLog } from '@/types/database';
 import { SAMPLE_WORDBOOKS, SAMPLE_WORDS } from '@/lib/sample-data';
 import { getSupabaseClient } from '@/lib/supabase';
 import { maskEmail, maskName } from '@/utils/masking';
@@ -48,11 +48,13 @@ interface VocaState {
   deleteWord: (wordId: string, wordbookId: string) => Promise<void>;
   updateWord: (word: Word) => Promise<void>;
 
-  // Quiz & Incorrect Notes
+  // Quiz & Incorrect Notes & Study Logs
   quizResults: QuizResult[];
   incorrectNotes: IncorrectNote[];
+  studyLogs: StudyLog[];
   recordQuizResult: (wordbookId: string, totalScore: number, maxScore: number, wrongWordIds: { wordId: string; wrongAnswer: string }[]) => Promise<void>;
   resolveIncorrectNote: (noteId: string) => Promise<void>;
+  addStudyTime: (seconds: number) => Promise<void>;
   resetToSampleData: () => void;
 }
 
@@ -625,6 +627,30 @@ export const useVocaStore = create<VocaState>((set, get) => ({
         } catch (e) {
           console.warn('Failed fetching registered student profiles:', e);
           set({ availableStudents: [] });
+        }
+
+        // 1.8 Fetch study_logs and auto-mark attendance for today
+        try {
+          const { data: logsData } = await client
+            .from('study_logs')
+            .select('*')
+            .order('study_date', { ascending: false });
+
+          if (logsData) {
+            set({ studyLogs: logsData });
+          }
+        } catch (e) {
+          console.warn('Failed fetching study_logs:', e);
+        }
+
+        // Auto-mark attendance row for today if student enters app
+        const currentStudentId = get().studentId;
+        const todayStr = new Date().toISOString().split('T')[0];
+        if (currentStudentId) {
+          const hasTodayLog = get().studyLogs.some(l => l.student_id === currentStudentId && l.study_date === todayStr);
+          if (!hasTodayLog) {
+            get().addStudyTime(0); // 0 seconds to mark attendance row in DB
+          }
         }
 
         // 2. Query ALL wordbooks in Supabase & sanitize legacy tutor names
@@ -1213,6 +1239,53 @@ export const useVocaStore = create<VocaState>((set, get) => ({
     if (typeof window !== 'undefined') {
       localStorage.setItem('vocat_local_quiz_results', JSON.stringify(updatedResults));
       localStorage.setItem('vocat_local_incorrect', JSON.stringify(currentNotes));
+    }
+  },
+
+  studyLogs: [],
+
+  addStudyTime: async (seconds: number) => {
+    if (seconds < 0) return;
+    const studentId = get().studentId;
+    if (!studentId) return;
+    const today = new Date().toISOString().split('T')[0];
+
+    const currentLogs = [...get().studyLogs];
+    const existingIdx = currentLogs.findIndex(l => l.student_id === studentId && l.study_date === today);
+
+    let updatedDuration = seconds;
+    if (existingIdx >= 0) {
+      updatedDuration = (currentLogs[existingIdx].duration_seconds || 0) + seconds;
+      currentLogs[existingIdx] = {
+        ...currentLogs[existingIdx],
+        duration_seconds: updatedDuration
+      };
+    } else {
+      currentLogs.push({
+        id: `sl-${Date.now()}`,
+        student_id: studentId,
+        study_date: today,
+        duration_seconds: updatedDuration,
+        created_at: new Date().toISOString()
+      });
+    }
+
+    set({ studyLogs: currentLogs });
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(`vocat_study_logs_${studentId}`, JSON.stringify(currentLogs));
+    }
+
+    const client = getSupabaseClient();
+    if (client && isUuid(studentId)) {
+      try {
+        await client.from('study_logs').upsert({
+          student_id: studentId,
+          study_date: today,
+          duration_seconds: updatedDuration
+        }, { onConflict: 'student_id,study_date' });
+      } catch (err) {
+        console.warn('Supabase addStudyTime error:', err);
+      }
     }
   },
 

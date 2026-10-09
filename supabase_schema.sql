@@ -79,6 +79,16 @@ create table if not exists incorrect_notes (
   updated_at timestamp with time zone default timezone('utc'::text, now())
 );
 
+-- 6. 출석 및 공부 시간 관리 테이블
+create table if not exists study_logs (
+  id uuid default gen_random_uuid() primary key,
+  student_id uuid references profiles(id) on delete cascade,
+  study_date date default current_date,
+  duration_seconds int default 0,
+  created_at timestamp with time zone default timezone('utc'::text, now()),
+  unique(student_id, study_date)
+);
+
 -- Row Level Security (RLS) Policies
 alter table profiles enable row level security;
 alter table tutor_students enable row level security;
@@ -86,6 +96,7 @@ alter table wordbooks enable row level security;
 alter table words enable row level security;
 alter table quiz_results enable row level security;
 alter table incorrect_notes enable row level security;
+alter table study_logs enable row level security;
 
 -- Permissive policies for authenticated and anon users (allowing BYO DB & dynamic access)
 drop policy if exists "Public profile access" on profiles;
@@ -103,6 +114,7 @@ drop policy if exists "Tutors can manage words" on words;
 
 drop policy if exists "Public quiz results" on quiz_results;
 drop policy if exists "Public incorrect notes" on incorrect_notes;
+drop policy if exists "Public study logs" on study_logs;
 
 create policy "Public profile access" on profiles for select using (true);
 create policy "Users can update own profile" on profiles for update using (auth.uid() = id);
@@ -119,3 +131,5 @@ create policy "Tutors can manage words" on words for all using (true);
 
 create policy "Public quiz results" on quiz_results for all using (true);
 create policy "Public incorrect notes" on incorrect_notes for all using (true);
+create policy "Public study logs" on study_logs for all using (true);
+

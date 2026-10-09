@@ -29,7 +29,7 @@ export const StudentReportModal: React.FC<StudentReportModalProps> = ({
   onClose,
   studentName = '김학생 (student_01)'
 }) => {
-  const { quizResults, incorrectNotes, words, wordbooks, settings } = useVocaStore();
+  const { quizResults, incorrectNotes, words, wordbooks, settings, studyLogs } = useVocaStore();
 
   const [aiFeedback, setAiFeedback] = useState<string>('');
   const [isAiLoading, setIsAiLoading] = useState<boolean>(false);
@@ -40,14 +40,34 @@ export const StudentReportModal: React.FC<StudentReportModalProps> = ({
   // 1) Overview calculations
   const totalQuizzes = quizResults.length;
   
-  // Recent 7 days quiz count
-  const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-  const recent7DaysQuizzes = quizResults.filter(q => new Date(q.created_at).getTime() >= sevenDaysAgo).length;
+  // Recent 7 days calculation for Attendance & Study Time
+  const todayStr = new Date().toISOString().split('T')[0];
+  const sevenDaysAgoDate = new Date();
+  sevenDaysAgoDate.setDate(sevenDaysAgoDate.getDate() - 6);
+  const sevenDaysAgoStr = sevenDaysAgoDate.toISOString().split('T')[0];
 
-  // Unique study days count
-  const uniqueStudyDays = new Set(
-    quizResults.map(q => new Date(q.created_at).toISOString().split('T')[0])
-  ).size;
+  const studentLogs = studyLogs.filter(l => l.student_id || true); // student study logs
+  const todayLog = studentLogs.find(l => l.study_date === todayStr);
+  const todaySeconds = todayLog?.duration_seconds || 0;
+
+  const thisWeekLogs = studentLogs.filter(l => l.study_date >= sevenDaysAgoStr && l.study_date <= todayStr);
+  const attendanceDaysThisWeek = new Set(thisWeekLogs.map(l => l.study_date)).size;
+  const weeklyTotalSeconds = thisWeekLogs.reduce((acc, l) => acc + (l.duration_seconds || 0), 0);
+
+  const formatDuration = (sec: number) => {
+    if (sec <= 0) return '0분';
+    if (sec < 60) return `${sec}초`;
+    const mins = Math.floor(sec / 60);
+    const hours = Math.floor(mins / 60);
+    const remMins = mins % 60;
+    if (hours > 0) {
+      return remMins > 0 ? `${hours}시간 ${remMins}분` : `${hours}시간`;
+    }
+    return `${mins}분`;
+  };
+
+  const todayStudyTimeText = formatDuration(todaySeconds);
+  const weeklyStudyTimeText = formatDuration(weeklyTotalSeconds);
 
   // Average score %
   const avgScorePct = totalQuizzes > 0
@@ -225,44 +245,55 @@ export const StudentReportModal: React.FC<StudentReportModalProps> = ({
           <div className="space-y-3">
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
               <Target className="w-4 h-4 text-blue-600" />
-              1. 종합 학습 성과 (Overview Stats)
+              1. 출석 및 종합 학습 성과 (Overview Stats)
             </h3>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
-                <div className="flex items-center justify-between text-xs text-slate-500 font-semibold">
-                  <span>총 학습 일수 / 7일 응시</span>
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+              <div className="p-4 rounded-2xl bg-blue-50/60 border border-blue-200 space-y-1">
+                <div className="flex items-center justify-between text-xs text-blue-900 font-extrabold">
+                  <span>이번 주 출석 일수</span>
                   <Calendar className="w-4 h-4 text-blue-600" />
                 </div>
-                <div className="text-2xl font-extrabold text-slate-800">
-                  {uniqueStudyDays}일 <span className="text-xs font-bold text-blue-600">({recent7DaysQuizzes}회 응시)</span>
+                <div className="text-2xl font-extrabold text-blue-900">
+                  {attendanceDaysThisWeek} <span className="text-xs text-slate-500 font-bold">/ 7일 출석</span>
                 </div>
-                <p className="text-[11px] text-slate-500">누적 평가 횟수: 총 {totalQuizzes}회</p>
+                <p className="text-[11px] text-slate-500">주간 출석률 {Math.round((attendanceDaysThisWeek / 7) * 100)}%</p>
               </div>
 
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
-                <div className="flex items-center justify-between text-xs text-slate-500 font-semibold">
+              <div className="p-4 rounded-2xl bg-indigo-50/60 border border-indigo-200 space-y-1">
+                <div className="flex items-center justify-between text-xs text-indigo-900 font-extrabold">
+                  <span>오늘 공부한 시간</span>
+                  <TrendingUp className="w-4 h-4 text-indigo-600" />
+                </div>
+                <div className="text-2xl font-extrabold text-indigo-900">
+                  {todayStudyTimeText}
+                </div>
+                <p className="text-[11px] text-slate-500">이번 주 총 {weeklyStudyTimeText}</p>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-emerald-50/60 border border-emerald-200 space-y-1">
+                <div className="flex items-center justify-between text-xs text-emerald-900 font-extrabold">
                   <span>전체 평균 정답률</span>
                   <Award className="w-4 h-4 text-emerald-600" />
                 </div>
-                <div className="text-2xl font-extrabold text-emerald-700">
+                <div className="text-2xl font-extrabold text-emerald-800">
                   {avgScorePct}%
                 </div>
                 <p className="text-[11px] text-slate-500">
-                  {avgScorePct >= 80 ? '상위 우수 (Mastered)' : '집중 복습 권장'}
+                  총 {totalQuizzes}회 시험 응시 완료
                 </p>
               </div>
 
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
-                <div className="flex items-center justify-between text-xs text-slate-500 font-semibold">
+              <div className="p-4 rounded-2xl bg-amber-50/60 border border-amber-200 space-y-1">
+                <div className="flex items-center justify-between text-xs text-amber-900 font-extrabold">
                   <span>단어 누적 정복률</span>
-                  <BookOpen className="w-4 h-4 text-indigo-600" />
+                  <BookOpen className="w-4 h-4 text-amber-600" />
                 </div>
-                <div className="text-2xl font-extrabold text-indigo-700">
+                <div className="text-2xl font-extrabold text-amber-900">
                   {masteryPct}%
                 </div>
                 <p className="text-[11px] text-slate-500">
-                  등록 {allWordsList.length}개 중 {masteredWordsCount}개 완전 마스터
+                  전체 {allWordsList.length}개 중 {masteredWordsCount}개 완전 마스터
                 </p>
               </div>
             </div>
