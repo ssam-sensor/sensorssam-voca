@@ -34,6 +34,7 @@ export const StudentDashboard: React.FC = () => {
   } = useVocaStore();
 
   const [activeTab, setActiveTab] = useState<'study' | 'quiz' | 'incorrect'>('study');
+  const [quizMode, setQuizMode] = useState<'standard' | 'ai'>('standard');
   const [customQuizWords, setCustomQuizWords] = useState<Word[] | null>(null);
   const [isFormModalOpen, setIsFormModalOpen] = useState<boolean>(false);
 
@@ -68,6 +69,7 @@ export const StudentDashboard: React.FC = () => {
       <QuizSuite
         wordbook={dummyWb}
         words={customQuizWords}
+        mode="standard"
         onFinish={() => setCustomQuizWords(null)}
       />
     );
@@ -78,6 +80,7 @@ export const StudentDashboard: React.FC = () => {
       <QuizSuite
         wordbook={selectedWb}
         words={currentWords}
+        mode={quizMode}
         onFinish={() => setActiveTab('study')}
       />
     );
@@ -181,11 +184,14 @@ export const StudentDashboard: React.FC = () => {
 
             <div className="w-full sm:w-auto flex items-center gap-2">
               <button
-                onClick={() => setActiveTab('quiz')}
-                className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-sm transition-all active:scale-95"
+                onClick={() => {
+                  setQuizMode('ai');
+                  setActiveTab('quiz');
+                }}
+                className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-xs shadow-md transition-all active:scale-95"
               >
-                <Sparkles className="w-4 h-4" />
-                <span>AI 테스트 치르기</span>
+                <Sparkles className="w-4 h-4 text-amber-300" />
+                <span>AI 테스트 치르기 (고난도 1/3)</span>
               </button>
             </div>
           </div>

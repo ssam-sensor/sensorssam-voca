@@ -277,6 +277,43 @@ Guidelines:
       }
     }
 
+    // 5. AI Test Real-time Meaning Grading
+    if (action === 'grade_ai_test') {
+      const { word, correctMeaning, pos, studentAnswer } = body;
+      const prompt = `You are an AI English Tutor grading a Korean student's typed meaning answer in a vocabulary test.
+English Word: "${word}" (${pos || ''})
+Official Dictionary Meaning: "${correctMeaning}"
+Student's Typed Korean Answer: "${studentAnswer}"
+
+Evaluate if the student's typed Korean answer accurately captures the correct meaning or valid synonyms/paraphrases for "${word}".
+
+Return a raw JSON object:
+{
+  "isCorrect": true or false,
+  "score": 0 to 100 (integer score: 100 for exact/synonym match, 70-90 for partial, 0 for incorrect),
+  "feedback": "Concise 1-2 sentence polite Korean explanation of why it is correct or what nuance/meaning was missed."
+}
+
+Return ONLY raw JSON without markdown codeblock formatting.`;
+
+      try {
+        const resultText = await executeGeminiWithRetry(ai, (model) => ({
+          model,
+          contents: prompt,
+          config: {
+            temperature: 0.1,
+            responseMimeType: 'application/json'
+          }
+        }));
+
+        const cleaned = resultText.replace(/```json\n?|\n?```/g, '').trim();
+        const evalResult = JSON.parse(cleaned);
+        return NextResponse.json(evalResult);
+      } catch (err: any) {
+        return NextResponse.json({ error: err.message }, { status: 500 });
+      }
+    }
+
     return NextResponse.json({ error: '알 수 없는 요청 형식입니다.' }, { status: 400 });
   } catch (error: any) {
     console.error('[Gemini Route Error]:', error);

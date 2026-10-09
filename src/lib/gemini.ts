@@ -302,3 +302,48 @@ function generateFallbackCoachingFeedback(stats: {
 
   return feedback;
 }
+
+/**
+ * AI Real-time Meaning Grading Helper
+ */
+export async function gradeStudentAnswerWithGemini(
+  word: string,
+  correctMeaning: string,
+  pos: string,
+  studentAnswer: string
+): Promise<{ isCorrect: boolean; score: number; feedback: string }> {
+  if (!studentAnswer || !studentAnswer.trim()) {
+    return { isCorrect: false, score: 0, feedback: '답안이 입력되지 않았습니다.' };
+  }
+
+  try {
+    const data = await callServerGeminiApi({
+      action: 'grade_ai_test',
+      word,
+      correctMeaning,
+      pos,
+      studentAnswer
+    });
+
+    return {
+      isCorrect: Boolean(data.isCorrect),
+      score: Number(data.score || 0),
+      feedback: data.feedback || (data.isCorrect ? '정답입니다!' : '오답입니다.')
+    };
+  } catch (err) {
+    console.warn('Gemini AI grading fallback:', err);
+    // Intelligent local fallback if offline or AI call fails
+    const cleanedStudent = studentAnswer.trim().toLowerCase();
+    const meanings = correctMeaning.split(/[;,]/).map(m => m.trim().toLowerCase());
+    const match = meanings.some(m => cleanedStudent.includes(m) || m.includes(cleanedStudent));
+
+    return {
+      isCorrect: match,
+      score: match ? 100 : 0,
+      feedback: match
+        ? '정답입니다! (로컬 사전 자동 확인)'
+        : `오답입니다. 올바른 뜻: ${correctMeaning}`
+    };
+  }
+}
+
