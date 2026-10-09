@@ -10,8 +10,11 @@ import { RoleSelectModal } from '@/components/RoleSelectModal';
 import { Layers, Users, GraduationCap, Loader2, BookOpen } from 'lucide-react';
 
 export default function Home() {
-  const { accountRole, userRole, loadInitialData, isLoading, isVerifiedWithInviteCode } = useVocaStore();
+  const { userEmail, accountRole, userRole, loadInitialData, isLoading, isVerifiedWithInviteCode } = useVocaStore();
   const [tutorTab, setTutorTab] = useState<'wordbooks' | 'students'>('wordbooks');
+
+  const isLoggedIn = Boolean(userEmail);
+  const showMainWorkspace = isLoggedIn && isVerifiedWithInviteCode;
 
   useEffect(() => {
     loadInitialData();
@@ -30,11 +33,11 @@ export default function Home() {
     <div className="min-h-screen bg-slate-100 text-slate-800 flex flex-col selection:bg-blue-500 selection:text-white">
       <Navbar />
 
-      {/* Invite Code Verification Modal for initial / unverified users */}
-      <RoleSelectModal isOpen={!isVerifiedWithInviteCode} />
+      {/* Invite Code & Google Authentication Modal */}
+      <RoleSelectModal isOpen={!showMainWorkspace} />
 
       {/* Protected Main Workspace View */}
-      {isVerifiedWithInviteCode ? (
+      {showMainWorkspace ? (
         <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8 space-y-6 sm:space-y-8">
           
           {/* Role Banner / Switcher Bar */}

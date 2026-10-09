@@ -445,6 +445,19 @@ export const useVocaStore = create<VocaState>((set, get) => ({
               created_at: new Date().toISOString()
             }, { onConflict: 'id' });
           }
+        } else {
+          // Unauthenticated visitor: DO NOT LOAD PRIVATE WORDBOOKS!
+          set({
+            userEmail: '',
+            tutorId: '',
+            studentId: '',
+            allWordbooks: [],
+            wordbooks: [],
+            words: {},
+            activeWordbookId: null,
+            isLoading: false
+          });
+          return;
         }
 
         // 0. Clean up legacy dummy tutors from DB tables
