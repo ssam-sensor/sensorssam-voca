@@ -77,11 +77,18 @@ export const WordbookFormModal: React.FC<WordbookFormModalProps> = ({ isOpen, on
       alert('구글 Gemini API 키(AIzaSy...)를 입력해 주세요.');
       return;
     }
+    if (!key.startsWith('AIza')) {
+      if (!confirm('입력하신 키가 구글 API 키의 표준 형태(AIzaSy...)와 다릅니다.\n이 키로 저장하시겠습니까?')) {
+        return;
+      }
+    }
     if (typeof window !== 'undefined') {
       localStorage.setItem('vocat_gemini_api_key', key);
     }
     setShowApiKeyInput(false);
-    alert('Gemini API 키가 저장되어 즉시 연결되었습니다!');
+    setOcrError(null);
+    setAiError(null);
+    alert('Gemini API 키가 성공적으로 저장되었습니다!');
   };
 
   // Handle Multimodal File OCR Extraction
@@ -343,10 +350,19 @@ export const WordbookFormModal: React.FC<WordbookFormModalProps> = ({ isOpen, on
           {activeTab === 'ocr' && (
             <div className="space-y-5">
               <div className="p-4 rounded-2xl bg-blue-50 border border-blue-200 text-xs text-blue-950 space-y-1">
-                <p className="font-bold text-blue-900 flex items-center gap-1.5">
-                  <Sparkles className="w-4 h-4 text-blue-600" />
-                  Gemini 3.8 Flash 멀티모달 OCR 교재 자동 추출
-                </p>
+                <div className="flex items-center justify-between">
+                  <p className="font-bold text-blue-900 flex items-center gap-1.5">
+                    <Sparkles className="w-4 h-4 text-blue-600" />
+                    Gemini Flash 멀티모달 OCR 교재 자동 추출
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setShowApiKeyInput(!showApiKeyInput)}
+                    className="text-[11px] font-bold text-blue-700 hover:text-blue-900 bg-blue-100/70 hover:bg-blue-200 px-2.5 py-1 rounded-lg transition-colors"
+                  >
+                    🔑 API 키 설정/변경
+                  </button>
+                </div>
                 <p className="text-slate-600 leading-relaxed">
                   영어 교재 페이지 촬영 사진(JPG, PNG, WEBP)이나 교재 PDF 문서를 올려주시면 AI가 단어, 발음기호, 품사, 한글 뜻을 자동으로 파싱합니다.
                 </p>

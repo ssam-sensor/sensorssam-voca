@@ -64,11 +64,18 @@ async function callGeminiWithFallback(
     throw new Error('구글 AI 서버 한도 초과 또는 트래픽 급증입니다. 3~5초 후 다시 시도해 주세요.');
   }
 
-  if (finalErrStr.includes('404') || finalErrStr.includes('not_found')) {
-    throw new Error('선택한 AI 모델을 찾을 수 없습니다. API 키 상태를 확인 후 다시 시도해 주세요.');
+  if (
+    finalErrStr.includes('404') ||
+    finalErrStr.includes('not_found') ||
+    finalErrStr.includes('api_key') ||
+    finalErrStr.includes('invalid') ||
+    finalErrStr.includes('400') ||
+    finalErrStr.includes('403')
+  ) {
+    throw new Error('Gemini API 키가 올바르지 않거나 권한이 없습니다. Google AI Studio(https://aistudio.google.com/app/apikey)에서 AIza로 시작하는 무료 API 키를 발급받아 새로 입력해 주세요.');
   }
 
-  throw new Error('Gemini AI 서비스 호출 중 오류가 발생했습니다. API 키를 확인해 주세요.');
+  throw new Error('Gemini AI 서비스 호출 중 오류가 발생했습니다. API 키 상태를 확인해 주세요.');
 }
 
 /**
