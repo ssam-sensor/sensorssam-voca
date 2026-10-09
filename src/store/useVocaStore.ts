@@ -765,22 +765,23 @@ export const useVocaStore = create<VocaState>((set, get) => ({
         if (dbUserId) {
           const currentRole = get().accountRole || get().userRole || (isStudent ? 'student' : 'tutor');
           const currentName = get().userName || (isStudent ? '학생' : 'SensorSsam 튜터');
+          const currentEmail = userEmail || get().userEmail || `user-${dbUserId.slice(0, 5)}@vocat.com`;
 
-          const { error: profErr } = await client.from('profiles').upsert({
-            id: dbUserId,
-            email: userEmail || '',
-            name: currentName,
-            role: currentRole,
-            is_verified: true,
-            created_at: new Date().toISOString()
-          }, { onConflict: 'id' });
-
-          if (profErr) {
+          try {
+            await client.from('profiles').upsert({
+              id: dbUserId,
+              email: currentEmail,
+              name: currentName,
+              role: currentRole,
+              is_verified: true,
+              created_at: new Date().toISOString()
+            }, { onConflict: 'id' });
+          } catch (profErr) {
             console.warn('Profile prep upsert warning:', profErr);
           }
         }
 
-        // STEP 2: Insert Wordbook into Supabase DB table
+        // STEP 2: Insert Wordbook into Supabase DB table with 3-tier resilient fallback
         const insertWbData: any = {
           title,
           chapter,
@@ -790,14 +791,47 @@ export const useVocaStore = create<VocaState>((set, get) => ({
           insertWbData.tutor_id = dbUserId;
         }
 
-        const { data: insertedWb, error: wbErr } = await client
+        let insertedWb: any = null;
+        let wbErr: any = null;
+
+        // Attempt 1: Full payload
+        const res1 = await client
           .from('wordbooks')
           .insert(insertWbData)
           .select()
           .single();
 
+        insertedWb = res1.data;
+        wbErr = res1.error;
+
+        // Attempt 2: If tutor_name column is missing in DB schema, delete tutor_name & retry
+        if (wbErr && (wbErr.message?.includes('tutor_name') || wbErr.code === 'PGRST204')) {
+          console.warn('Retrying wordbooks insert without tutor_name column...');
+          delete insertWbData.tutor_name;
+          const res2 = await client
+            .from('wordbooks')
+            .insert(insertWbData)
+            .select()
+            .single();
+          insertedWb = res2.data;
+          wbErr = res2.error;
+        }
+
+        // Attempt 3: If tutor_id foreign key fails, delete tutor_id & retry
+        if (wbErr && (wbErr.code === '23503' || wbErr.message?.includes('foreign key') || wbErr.message?.includes('fkey'))) {
+          console.warn('Retrying wordbooks insert without tutor_id foreign key...');
+          delete insertWbData.tutor_id;
+          const res3 = await client
+            .from('wordbooks')
+            .insert(insertWbData)
+            .select()
+            .single();
+          insertedWb = res3.data;
+          wbErr = res3.error;
+        }
+
         if (wbErr) {
-          console.error('Supabase wordbook insert error:', wbErr);
+          console.error('Supabase wordbook insert error after fallbacks:', wbErr);
         }
 
         if (!wbErr && insertedWb) {
@@ -823,10 +857,11 @@ export const useVocaStore = create<VocaState>((set, get) => ({
             console.error('Supabase words insert error:', wordsErr);
           }
 
-          console.log('Saved student wordbook to Supabase DB successfully:', insertedWb.id);
+          console.log('Saved wordbook to Supabase DB successfully:', insertedWb.id);
 
           const newWbObj: Wordbook = {
             ...insertedWb,
+            tutor_id: dbUserId || insertedWb.tutor_id,
             tutor_name: tutorName,
             creator_role: get().userRole,
             is_student_created: isStudent,
@@ -846,18 +881,21 @@ export const useVocaStore = create<VocaState>((set, get) => ({
           }
 
           const updatedAllWbs = [newWbObj, ...get().allWordbooks];
-          const updatedWbs = [newWbObj, ...get().wordbooks];
-          const updatedWords = { ...get().words, [insertedWb.id]: insertedWords || dbWords || [] };
+          const updatedWordsMap = { ...get().words, [insertedWb.id]: insertedWords || dbWords || [] };
+          set({ allWordbooks: updatedAllWbs, words: updatedWordsMap, activeWordbookId: insertedWb.id });
 
-          set({ allWordbooks: updatedAllWbs, wordbooks: updatedWbs, words: updatedWords, activeWordbookId: insertedWb.id });
+          // Instantly re-filter active student/tutor wordbooks
+          get().filterWordbooksForStudent();
 
           if (typeof window !== 'undefined') {
             const currentTId = get().tutorId;
-            localStorage.setItem(getWbKey(currentTId), JSON.stringify(updatedWbs));
-            localStorage.setItem(getWordsKey(currentTId), JSON.stringify(updatedWords));
+            localStorage.setItem(getWbKey(currentTId), JSON.stringify(get().wordbooks));
+            localStorage.setItem(getWordsKey(currentTId), JSON.stringify(updatedWordsMap));
           }
 
           return newWbObj;
+        } else if (wbErr) {
+          alert(`단어장 저장 중 DB 오류가 발생했습니다: ${wbErr.message || '데이터베이스 저장 실패'}`);
         }
       } catch (err) {
         console.error('Failed inserting to Supabase:', err);

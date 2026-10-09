@@ -33,10 +33,17 @@ create table if not exists tutor_students (
 create table if not exists wordbooks (
   id uuid default gen_random_uuid() primary key,
   tutor_id uuid references profiles(id) on delete cascade,
+  tutor_name text,
+  creator_role text default 'tutor',
+  is_student_created boolean default false,
   title text not null, -- 예: "WordMaster 고등 COMPLETE", "자이스토리 1회"
   chapter text not null, -- 예: "DAY 15", "DAY 16"
   created_at timestamp with time zone default timezone('utc'::text, now())
 );
+
+alter table wordbooks add column if not exists tutor_name text;
+alter table wordbooks add column if not exists creator_role text default 'tutor';
+alter table wordbooks add column if not exists is_student_created boolean default false;
 
 -- 4. 단어 데이터 테이블
 create table if not exists words (
