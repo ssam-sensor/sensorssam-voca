@@ -2,9 +2,9 @@ import { NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
 
 const FALLBACK_MODEL_CHAIN = [
+  'gemini-1.5-flash',
   'gemini-2.0-flash',
-  'gemini-2.0-flash-lite',
-  'gemini-1.5-flash'
+  'gemini-2.0-flash-lite'
 ];
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));

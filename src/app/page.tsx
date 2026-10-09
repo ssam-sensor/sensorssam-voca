@@ -6,11 +6,12 @@ import { Navbar } from '@/components/Navbar';
 import { WordbookList } from '@/components/tutor/WordbookList';
 import { StudentManager } from '@/components/tutor/StudentManager';
 import { StudentDashboard } from '@/components/student/StudentDashboard';
+import { StudentReportModal } from '@/components/tutor/StudentReportModal';
 import { RoleSelectModal } from '@/components/RoleSelectModal';
-import { Layers, Users, GraduationCap, Loader2, BookOpen } from 'lucide-react';
+import { Layers, Users, GraduationCap, Loader2, BookOpen, FileSpreadsheet } from 'lucide-react';
 
 export default function Home() {
-  const { userEmail, accountRole, userRole, loadInitialData, isLoading, isVerifiedWithInviteCode } = useVocaStore();
+  const { userEmail, accountRole, userRole, loadInitialData, isLoading, isVerifiedWithInviteCode, isStudentReportOpen, openStudentReport, closeStudentReport, userName } = useVocaStore();
   const [tutorTab, setTutorTab] = useState<'wordbooks' | 'students'>('wordbooks');
 
   const isLoggedIn = Boolean(userEmail);
@@ -65,7 +66,7 @@ export default function Home() {
             </div>
 
             {/* Tutor Mode Sub-Tabs */}
-            {userRole === 'tutor' && (
+            {userRole === 'tutor' ? (
               <div className="flex w-full sm:w-auto bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-bold">
                 <button
                   onClick={() => setTutorTab('wordbooks')}
@@ -91,6 +92,14 @@ export default function Home() {
                   <span>학생 & 시험 현황</span>
                 </button>
               </div>
+            ) : (
+              <button
+                onClick={openStudentReport}
+                className="flex w-full sm:w-auto items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs shadow-sm transition-all active:scale-95 shrink-0 cursor-pointer"
+              >
+                <FileSpreadsheet className="w-4 h-4 text-blue-200" />
+                <span>나의 학습 결과 및 보고서 조회</span>
+              </button>
             )}
           </div>
 
@@ -109,6 +118,13 @@ export default function Home() {
           </p>
         </div>
       )}
+
+      {/* Global Student Report Modal */}
+      <StudentReportModal
+        isOpen={isStudentReportOpen}
+        onClose={closeStudentReport}
+        studentName={userName || '학생'}
+      />
 
       {/* Footer */}
       <footer className="border-t border-slate-200 bg-white py-6 text-center text-xs text-slate-500 font-medium">

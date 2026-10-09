@@ -34,6 +34,14 @@ export const StudentReportModal: React.FC<StudentReportModalProps> = ({
   const [aiFeedback, setAiFeedback] = useState<string>('');
   const [isAiLoading, setIsAiLoading] = useState<boolean>(false);
 
+  useEffect(() => {
+    if (isOpen) {
+      fetchAiFeedback();
+    }
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+
   // Flatten all registered words
   const allWordsList = Object.values(words).flat();
 
@@ -160,14 +168,6 @@ export const StudentReportModal: React.FC<StudentReportModalProps> = ({
       setIsAiLoading(false);
     }
   };
-
-  useEffect(() => {
-    if (isOpen) {
-      fetchAiFeedback();
-    }
-  }, [isOpen]);
-
-  if (!isOpen) return null;
 
   const handlePrint = () => {
     window.print();

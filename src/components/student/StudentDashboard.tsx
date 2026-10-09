@@ -33,14 +33,14 @@ export const StudentDashboard: React.FC = () => {
     availableTutors,
     linkedTutorIds,
     toggleLinkedTutorId,
-    userName
+    userName,
+    openStudentReport
   } = useVocaStore();
 
   const [activeTab, setActiveTab] = useState<'study' | 'quiz' | 'incorrect'>('study');
   const [quizMode, setQuizMode] = useState<'standard' | 'ai'>('standard');
   const [customQuizWords, setCustomQuizWords] = useState<Word[] | null>(null);
   const [isFormModalOpen, setIsFormModalOpen] = useState<boolean>(false);
-  const [isReportOpen, setIsReportOpen] = useState<boolean>(false);
 
   const selectedWb = wordbooks.find(w => w.id === activeWordbookId) || wordbooks[0];
   const currentWords = words[selectedWb?.id] || [];
@@ -112,8 +112,8 @@ export const StudentDashboard: React.FC = () => {
 
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setIsReportOpen(true)}
-              className="flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs border border-slate-200 transition-all active:scale-95"
+              onClick={openStudentReport}
+              className="flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs border border-slate-200 transition-all active:scale-95 cursor-pointer"
             >
               <FileSpreadsheet className="w-4 h-4 text-blue-600" />
               <span>나의 학습 결과 및 보고서</span>
@@ -197,8 +197,8 @@ export const StudentDashboard: React.FC = () => {
 
             <div className="w-full sm:w-auto flex flex-wrap items-center gap-2">
               <button
-                onClick={() => setIsReportOpen(true)}
-                className="flex items-center justify-center gap-1.5 px-4 py-3 rounded-2xl bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs border border-blue-200 transition-all active:scale-95 shadow-xs"
+                onClick={openStudentReport}
+                className="flex items-center justify-center gap-1.5 px-4 py-3 rounded-2xl bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs border border-blue-200 transition-all active:scale-95 shadow-xs cursor-pointer"
               >
                 <FileSpreadsheet className="w-4 h-4 text-blue-600" />
                 <span>나의 학습 결과 및 보고서</span>
@@ -280,8 +280,8 @@ export const StudentDashboard: React.FC = () => {
           <p className="font-medium">선택된 튜터의 단어장이 없습니다. 상단에서 튜터를 선택하거나 스스로 단어장을 추가해보세요!</p>
           <div className="flex items-center justify-center gap-3">
             <button
-              onClick={() => setIsReportOpen(true)}
-              className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs transition-all active:scale-95"
+              onClick={openStudentReport}
+              className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs transition-all active:scale-95 cursor-pointer"
             >
               <FileSpreadsheet className="w-4 h-4" />
               <span>나의 학습 결과 및 보고서 조회</span>
@@ -331,7 +331,7 @@ export const StudentDashboard: React.FC = () => {
         </div>
 
         <button
-          onClick={() => setIsReportOpen(true)}
+          onClick={openStudentReport}
           className="pb-3 flex items-center gap-1.5 px-3 py-1 rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-100 font-extrabold transition-all border border-blue-200 active:scale-95 cursor-pointer shrink-0"
         >
           <FileSpreadsheet className="w-4 h-4 text-blue-600 shrink-0" />
@@ -358,13 +358,6 @@ export const StudentDashboard: React.FC = () => {
       <WordbookFormModal
         isOpen={isFormModalOpen}
         onClose={() => setIsFormModalOpen(false)}
-      />
-
-      {/* Student Self Report Modal */}
-      <StudentReportModal
-        isOpen={isReportOpen}
-        onClose={() => setIsReportOpen(false)}
-        studentName={userName || '학생'}
       />
     </div>
   );

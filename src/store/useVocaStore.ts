@@ -52,6 +52,9 @@ interface VocaState {
   quizResults: QuizResult[];
   incorrectNotes: IncorrectNote[];
   studyLogs: StudyLog[];
+  isStudentReportOpen: boolean;
+  openStudentReport: () => void;
+  closeStudentReport: () => void;
   recordQuizResult: (wordbookId: string, totalScore: number, maxScore: number, wrongWordIds: { wordId: string; wrongAnswer: string }[]) => Promise<void>;
   resolveIncorrectNote: (noteId: string) => Promise<void>;
   addStudyTime: (seconds: number) => Promise<void>;
@@ -372,6 +375,9 @@ export const useVocaStore = create<VocaState>((set, get) => ({
 
   quizResults: [],
   incorrectNotes: [],
+  isStudentReportOpen: false,
+  openStudentReport: () => set({ isStudentReportOpen: true }),
+  closeStudentReport: () => set({ isStudentReportOpen: false }),
 
   loadInitialData: async () => {
     set({ isLoading: true });
