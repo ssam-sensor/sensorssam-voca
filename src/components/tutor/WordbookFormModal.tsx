@@ -38,6 +38,10 @@ export const WordbookFormModal: React.FC<WordbookFormModalProps> = ({ isOpen, on
   // Parsed Words Preview Table
   const [parsedWords, setParsedWords] = useState<VocaBatchItem[]>([]);
 
+  // API Key Management State
+  const [apiKeyInput, setApiKeyInput] = useState('');
+  const [showApiKeyInput, setShowApiKeyInput] = useState(false);
+
   // Reset form state to initial clean slate
   const resetForm = () => {
     setTitle('');
@@ -50,6 +54,8 @@ export const WordbookFormModal: React.FC<WordbookFormModalProps> = ({ isOpen, on
     setBatchRawText('');
     setParsedWords([]);
     setActiveTab('ocr');
+    setApiKeyInput('');
+    setShowApiKeyInput(false);
   };
 
   const handleClose = () => {
@@ -64,6 +70,19 @@ export const WordbookFormModal: React.FC<WordbookFormModalProps> = ({ isOpen, on
   }, [isOpen]);
 
   if (!isOpen) return null;
+
+  const handleSaveApiKey = () => {
+    const key = apiKeyInput.trim();
+    if (!key) {
+      alert('구글 Gemini API 키(AIzaSy...)를 입력해 주세요.');
+      return;
+    }
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('vocat_gemini_api_key', key);
+    }
+    setShowApiKeyInput(false);
+    alert('Gemini API 키가 저장되어 즉시 연결되었습니다!');
+  };
 
   // Handle Multimodal File OCR Extraction
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -81,7 +100,8 @@ export const WordbookFormModal: React.FC<WordbookFormModalProps> = ({ isOpen, on
 
     const apiKey = getGeminiApiKey();
     if (!apiKey) {
-      alert('Gemini API 키가 설정되지 않았습니다. .env.local 환경 변수 설정을 확인해 주세요.');
+      setShowApiKeyInput(true);
+      setOcrError('Gemini API 키가 필요합니다. 아래 입력란에 구글 Gemini API 키를 입력해 주세요.');
       return;
     }
 
@@ -336,6 +356,44 @@ export const WordbookFormModal: React.FC<WordbookFormModalProps> = ({ isOpen, on
                 <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
                   <span>{ocrError}</span>
+                </div>
+              )}
+
+              {(!getGeminiApiKey() || showApiKeyInput) && (
+                <div className="p-4 rounded-2xl bg-amber-50 border border-amber-300 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-extrabold text-amber-900 flex items-center gap-1.5">
+                      <Sparkles className="w-4 h-4 text-amber-600" />
+                      Gemini API 키 연결 설정
+                    </span>
+                    <a
+                      href="https://aistudio.google.com/app/apikey"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[11px] font-bold text-blue-600 hover:underline"
+                    >
+                      무료 API 키 발급받기 (Google AI Studio) &rarr;
+                    </a>
+                  </div>
+                  <p className="text-[11px] text-amber-800 font-medium leading-relaxed">
+                    교재 분석 및 단어 추출을 위해 구글 Gemini API 키(<code>AIzaSy...</code>)가 필요합니다.
+                  </p>
+                  <div className="flex items-center gap-2 pt-1">
+                    <input
+                      type="password"
+                      value={apiKeyInput}
+                      onChange={(e) => setApiKeyInput(e.target.value)}
+                      placeholder="구글 Gemini API 키 입력 (AIzaSy...)"
+                      className="flex-1 px-3.5 py-2 rounded-xl bg-white border border-amber-300 text-xs font-mono font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleSaveApiKey}
+                      className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs transition-all shrink-0"
+                    >
+                      API 키 저장
+                    </button>
+                  </div>
                 </div>
               )}
 

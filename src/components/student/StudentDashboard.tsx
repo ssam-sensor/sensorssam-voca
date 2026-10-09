@@ -108,7 +108,7 @@ export const StudentDashboard: React.FC = () => {
             className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm transition-all active:scale-95 shrink-0"
           >
             <Plus className="w-4 h-4" />
-            <span>+ 학생 스스로 새 단어장 등록</span>
+            <span>학생 스스로 새 단어장 등록</span>
           </button>
         </div>
 
