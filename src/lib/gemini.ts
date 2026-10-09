@@ -151,41 +151,16 @@ export async function generateWordbookWithGemini(
 export async function generateContextClozeQuiz(
   words: { word: string; meaning: string }[]
 ): Promise<{ word: string; sentenceWithBlank: string; options: string[]; answerIndex: number }[]> {
-  const apiKey = getGeminiApiKey();
-
-  if (!apiKey) {
-    return generateFallbackClozeQuiz(words);
-  }
-
-  const ai = new GoogleGenAI({ apiKey });
-
-  const prompt = `Create a context fill-in-the-blank quiz for Korean English learners.
-Input Words: ${JSON.stringify(words)}
-
-Return a JSON array of questions:
-[
-  {
-    "word": "target English word",
-    "sentenceWithBlank": "Sentence where the target word is replaced by '______'.",
-    "options": ["Option 1", "Option 2", "Option 3", "Option 4"],
-    "answerIndex": 0-3 (index of correct option inside options array)
-  }
-]
-
-Return ONLY raw JSON array.`;
-
   try {
-    const response = await callGeminiWithFallback(ai, {
-      contents: prompt,
-      config: {
-        temperature: 0.2,
-        responseMimeType: 'application/json'
-      }
+    const data = await callServerGeminiApi({
+      action: 'generate_cloze_quiz',
+      words
     });
 
-    const text = response.text || '';
-    const cleaned = text.replace(/```json\n?|\n?```/g, '').trim();
-    return JSON.parse(cleaned);
+    if (data.questions && Array.isArray(data.questions)) {
+      return data.questions;
+    }
+    return generateFallbackClozeQuiz(words);
   } catch (err) {
     console.warn('Gemini quiz generation fallback:', err);
     return generateFallbackClozeQuiz(words);
@@ -223,40 +198,16 @@ export async function generateStudentEvaluationFeedback(stats: {
   weakPos: string[];
   topWrongWords: { word: string; pos?: string | null; meaning: string; wrongCount: number }[];
 }): Promise<string> {
-  const apiKey = getGeminiApiKey();
-
-  if (!apiKey) {
-    return generateFallbackCoachingFeedback(stats);
-  }
-
-  const ai = new GoogleGenAI({ apiKey });
-
-  const prompt = `You are an expert English Vocabulary Tutor creating a personalized learning evaluation summary for a student and their parents.
-Student Name: ${stats.studentName}
-Total Quizzes Taken: ${stats.totalQuizzes}
-Average Quiz Accuracy: ${stats.avgScorePct}%
-Vocabulary Mastery Rate: ${stats.masteryPct}%
-Part 1 Spelling Accuracy: ${stats.spellingAccuracyPct}%
-Part 2 Meaning Accuracy: ${stats.meaningAccuracyPct}%
-Weakest Parts of Speech (POS): ${stats.weakPos.join(', ') || '없음'}
-Top Repeatedly Failed Words: ${stats.topWrongWords.map(w => `${w.word}(${w.meaning}, ${w.wrongCount}회 오답)`).join(', ')}
-
-Write a professional, encouraging, diagnostic 3-4 line evaluation comment in Korean for the student's report card.
-Guidelines:
-1. Briefly evaluate their current vocabulary strengths (e.g. spelling vs. meaning recall).
-2. Point out specific weak areas (e.g. verbs/idioms or specific words).
-3. Provide 1-2 actionable daily study advice tips for the upcoming week.
-4. Keep tone polite, professional, and clear (no markdown headers, concise 3-4 sentences).`;
-
   try {
-    const response = await callGeminiWithFallback(ai, {
-      contents: prompt,
-      config: {
-        temperature: 0.3
-      }
+    const data = await callServerGeminiApi({
+      action: 'generate_student_feedback',
+      stats
     });
 
-    return response.text?.trim() || generateFallbackCoachingFeedback(stats);
+    if (data.feedback && typeof data.feedback === 'string') {
+      return data.feedback;
+    }
+    return generateFallbackCoachingFeedback(stats);
   } catch (err) {
     console.warn('Gemini student feedback generation fallback:', err);
     return generateFallbackCoachingFeedback(stats);

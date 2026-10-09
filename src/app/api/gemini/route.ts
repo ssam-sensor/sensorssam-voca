@@ -4,18 +4,91 @@ import { GoogleGenAI } from '@google/genai';
 const FALLBACK_MODEL_CHAIN = [
   'gemini-2.0-flash',
   'gemini-2.0-flash-lite',
-  'gemini-1.5-flash'
+  'gemini-1.5-flash',
+  'gemini-1.5-flash-8b'
 ];
+
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+async function executeGeminiWithRetry(
+  ai: GoogleGenAI,
+  generateParamsFunc: (model: string) => any,
+  maxRetries = 2
+): Promise<string> {
+  let lastErr: any = null;
+
+  for (const model of FALLBACK_MODEL_CHAIN) {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const response = await ai.models.generateContent(generateParamsFunc(model));
+        const text = response.text || '';
+        if (text) return text;
+      } catch (err: any) {
+        lastErr = err;
+        const errStr = String(err?.message || err || '').toLowerCase();
+        const is503 =
+          errStr.includes('503') ||
+          errStr.includes('unavailable') ||
+          errStr.includes('capacity') ||
+          errStr.includes('429') ||
+          errStr.includes('overloaded') ||
+          errStr.includes('resource_exhausted');
+
+        console.warn(
+          `[Gemini Route Retry] model=${model} attempt=${attempt} err=${errStr.slice(0, 120)}`
+        );
+
+        if (is503 && attempt < maxRetries) {
+          await sleep(1000 * (attempt + 1));
+          continue;
+        } else {
+          // Break inner attempt loop and try next model in FALLBACK_MODEL_CHAIN
+          break;
+        }
+      }
+    }
+  }
+
+  const finalErrRaw = String(lastErr?.message || lastErr || '');
+  const finalErrStr = finalErrRaw.toLowerCase();
+
+  if (
+    finalErrStr.includes('503') ||
+    finalErrStr.includes('capacity') ||
+    finalErrStr.includes('unavailable') ||
+    finalErrStr.includes('resource_exhausted') ||
+    finalErrStr.includes('overloaded') ||
+    finalErrStr.includes('429')
+  ) {
+    throw new Error('구글 AI 서버 트래픽(503 한도)이 일시적으로 급증했습니다. 3~5초 후 다시 시도해 주세요.');
+  }
+
+  if (
+    finalErrStr.includes('api_key') ||
+    finalErrStr.includes('invalid') ||
+    finalErrStr.includes('400') ||
+    finalErrStr.includes('403') ||
+    finalErrStr.includes('permission_denied') ||
+    finalErrStr.includes('unauthenticated')
+  ) {
+    throw new Error(
+      '웹 서버에 설정된 GEMINI_API_KEY가 올바르지 않거나 권한이 없습니다. Google AI Studio(https://aistudio.google.com/app/apikey)에서 키 상태를 확인해 주세요.'
+    );
+  }
+
+  throw new Error(finalErrRaw || 'Gemini AI 서비스 처리 중 오류가 발생했습니다.');
+}
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const apiKey = (
+    const rawKey = (
       process.env.GEMINI_API_KEY ||
       process.env.NEXT_PUBLIC_GEMINI_API_KEY ||
       body.customApiKey ||
       ''
-    ).trim();
+    );
+    const apiKey = rawKey.replace(/^["']|["']$/g, '').trim();
 
     if (!apiKey) {
       return NextResponse.json(
@@ -30,6 +103,7 @@ export async function POST(req: Request) {
     const ai = new GoogleGenAI({ apiKey });
     const { action } = body;
 
+    // 1. Extract words from multimodal file (Image/PDF)
     if (action === 'extract_multimodal') {
       const { base64Data, mimeType, mode } = body;
 
@@ -63,48 +137,27 @@ keep track of, 숙어, 숙어, ~을 기록하다; ~의 자국을 뒤밟다`;
 
       const promptText = mode === 'marked' ? promptMarked : promptAll;
 
-      let resultText = '';
-      let lastError: any = null;
+      try {
+        const resultText = await executeGeminiWithRetry(ai, (model) => ({
+          model,
+          contents: [
+            {
+              inlineData: {
+                mimeType: mimeType || 'image/png',
+                data: base64Data
+              }
+            },
+            { text: promptText }
+          ]
+        }));
 
-      for (const model of FALLBACK_MODEL_CHAIN) {
-        try {
-          const response = await ai.models.generateContent({
-            model,
-            contents: [
-              {
-                inlineData: {
-                  mimeType: mimeType || 'image/png',
-                  data: base64Data
-                }
-              },
-              { text: promptText }
-            ]
-          });
-          resultText = response.text || '';
-          if (resultText) break;
-        } catch (e: any) {
-          lastError = e;
-          console.warn(`[Gemini Route Warning] model ${model} failed:`, e?.message || e);
-        }
+        return NextResponse.json({ result: resultText });
+      } catch (err: any) {
+        return NextResponse.json({ error: err.message }, { status: 500 });
       }
-
-      if (!resultText && lastError) {
-        const errStr = String(lastError?.message || lastError || '').toLowerCase();
-        if (errStr.includes('api_key') || errStr.includes('invalid') || errStr.includes('400') || errStr.includes('403') || errStr.includes('404')) {
-          return NextResponse.json(
-            { error: '웹 서버에 설정된 GEMINI_API_KEY가 올바르지 않거나 권한이 없습니다. Google AI Studio에서 키 상태를 확인해 주세요.' },
-            { status: 400 }
-          );
-        }
-        return NextResponse.json(
-          { error: lastError?.message || '교재 이미지 단어 추출 중 오류가 발생했습니다.' },
-          { status: 500 }
-        );
-      }
-
-      return NextResponse.json({ result: resultText });
     }
 
+    // 2. Auto generate wordbook
     if (action === 'generate_wordbook') {
       const { topicOrText, wordCount = 10 } = body;
       const prompt = `You are an expert English Vocabulary Tutor creating a SensorSsam Voca dataset for Korean students.
@@ -131,40 +184,97 @@ Generate a JSON object with the following structure:
 
 Return ONLY valid raw JSON without markdown codeblock wrapper or extra text.`;
 
-      let resultText = '';
-      let lastError: any = null;
+      try {
+        const resultText = await executeGeminiWithRetry(ai, (model) => ({
+          model,
+          contents: prompt,
+          config: {
+            temperature: 0.3,
+            responseMimeType: 'application/json'
+          }
+        }));
 
-      for (const model of FALLBACK_MODEL_CHAIN) {
-        try {
-          const response = await ai.models.generateContent({
-            model,
-            contents: prompt,
-            config: {
-              temperature: 0.3,
-              responseMimeType: 'application/json'
-            }
-          });
-          resultText = response.text || '';
-          if (resultText) break;
-        } catch (e: any) {
-          lastError = e;
-        }
+        const cleaned = resultText.replace(/```json\n?|\n?```/g, '').trim();
+        const parsed = JSON.parse(cleaned);
+        return NextResponse.json({
+          title: parsed.title || 'AI 맞춤 단어장',
+          chapter: parsed.chapter || 'DAY 01',
+          words: parsed.words || []
+        });
+      } catch (err: any) {
+        return NextResponse.json({ error: err.message }, { status: 500 });
       }
+    }
 
-      if (!resultText && lastError) {
-        return NextResponse.json(
-          { error: lastError?.message || 'AI 단어장 생성 중 오류가 발생했습니다.' },
-          { status: 500 }
-        );
+    // 3. Context Cloze Quiz Generator
+    if (action === 'generate_cloze_quiz') {
+      const { words } = body;
+      const prompt = `Create a context fill-in-the-blank quiz for Korean English learners.
+Input Words: ${JSON.stringify(words)}
+
+Return a JSON array of questions:
+[
+  {
+    "word": "target English word",
+    "sentenceWithBlank": "Sentence where the target word is replaced by '______'.",
+    "options": ["Option 1", "Option 2", "Option 3", "Option 4"],
+    "answerIndex": 0-3 (index of correct option inside options array)
+  }
+]
+
+Return ONLY raw JSON array.`;
+
+      try {
+        const resultText = await executeGeminiWithRetry(ai, (model) => ({
+          model,
+          contents: prompt,
+          config: {
+            temperature: 0.2,
+            responseMimeType: 'application/json'
+          }
+        }));
+
+        const cleaned = resultText.replace(/```json\n?|\n?```/g, '').trim();
+        const questions = JSON.parse(cleaned);
+        return NextResponse.json({ questions });
+      } catch (err: any) {
+        return NextResponse.json({ error: err.message }, { status: 500 });
       }
+    }
 
-      const cleaned = resultText.replace(/```json\n?|\n?```/g, '').trim();
-      const parsed = JSON.parse(cleaned);
-      return NextResponse.json({
-        title: parsed.title || 'AI 맞춤 단어장',
-        chapter: parsed.chapter || 'DAY 01',
-        words: parsed.words || []
-      });
+    // 4. Student Evaluation Feedback Generator
+    if (action === 'generate_student_feedback') {
+      const { stats } = body;
+      const prompt = `You are an expert English Vocabulary Tutor creating a personalized learning evaluation summary for a student and their parents.
+Student Name: ${stats.studentName}
+Total Quizzes Taken: ${stats.totalQuizzes}
+Average Quiz Accuracy: ${stats.avgScorePct}%
+Vocabulary Mastery Rate: ${stats.masteryPct}%
+Part 1 Spelling Accuracy: ${stats.spellingAccuracyPct}%
+Part 2 Meaning Accuracy: ${stats.meaningAccuracyPct}%
+Weakest Parts of Speech (POS): ${stats.weakPos?.join(', ') || '없음'}
+Top Repeatedly Failed Words: ${stats.topWrongWords?.map((w: any) => `${w.word}(${w.meaning}, ${w.wrongCount}회 오답)`).join(', ')}
+
+Write a professional, encouraging, diagnostic 3-4 line evaluation comment in Korean for the student's report card.
+Guidelines:
+1. Briefly evaluate their current vocabulary strengths (e.g. spelling vs. meaning recall).
+2. Point out specific weak areas (e.g. verbs/idioms or specific words).
+3. Provide 1-2 actionable daily study advice tips for the upcoming week.
+4. Keep tone polite, professional, and clear (no markdown headers, concise 3-4 sentences).`;
+
+      try {
+        const resultText = await executeGeminiWithRetry(ai, (model) => ({
+          model,
+          contents: prompt,
+          config: {
+            temperature: 0.3
+          }
+        }));
+
+        return NextResponse.json({ feedback: resultText.trim() });
+      } catch (err: any) {
+        return NextResponse.json({ error: err.message }, { status: 500 });
+      }
     }
 
     return NextResponse.json({ error: '알 수 없는 요청 형식입니다.' }, { status: 400 });
@@ -176,3 +286,4 @@ Return ONLY valid raw JSON without markdown codeblock wrapper or extra text.`;
     );
   }
 }
+
