@@ -239,8 +239,10 @@ export const useVocaStore = create<VocaState>((set, get) => ({
     if (typeof window !== 'undefined') {
       localStorage.setItem('vocat_invite_verified', 'true');
       localStorage.setItem('vocat_user_role', role);
+      localStorage.setItem('vocat_account_role', role);
       if (nickname) localStorage.setItem('vocat_user_name', nickname);
     }
+    set({ accountRole: role, userRole: role });
 
     const client = getSupabaseClient();
     if (client) {
@@ -276,6 +278,7 @@ export const useVocaStore = create<VocaState>((set, get) => ({
     if (typeof window !== 'undefined') {
       localStorage.removeItem('vocat_invite_verified');
       localStorage.removeItem('vocat_user_role');
+      localStorage.removeItem('vocat_account_role');
     }
 
     const client = getSupabaseClient();
@@ -373,11 +376,14 @@ export const useVocaStore = create<VocaState>((set, get) => ({
     // Load verification state & saved user role & saved name
     if (typeof window !== 'undefined') {
       const isVerified = localStorage.getItem('vocat_invite_verified') === 'true';
-      const storedRole = localStorage.getItem('vocat_user_role') as UserRole;
+      const storedAccountRole = localStorage.getItem('vocat_account_role') as UserRole;
+      const storedUserRole = localStorage.getItem('vocat_user_role') as UserRole;
       const storedName = localStorage.getItem('vocat_user_name') || '';
+      const initialRole = storedAccountRole || storedUserRole || get().accountRole || 'student';
       set({
         isVerifiedWithInviteCode: isVerified,
-        userRole: storedRole || get().userRole,
+        accountRole: initialRole,
+        userRole: storedUserRole || initialRole,
         userName: storedName || get().userName
       });
     }
@@ -398,8 +404,12 @@ export const useVocaStore = create<VocaState>((set, get) => ({
             });
             try {
               let { data: profile } = await client.from('profiles').select('*').eq('id', userId).maybeSingle();
-              const activeName = profile?.name || localStorage.getItem('vocat_user_name') || defaultName;
-              const activeRole = profile?.role || get().accountRole || 'student';
+              const storedAccountRole = (typeof window !== 'undefined'
+                ? (localStorage.getItem('vocat_account_role') || localStorage.getItem('vocat_user_role'))
+                : null) as UserRole | null;
+
+              const activeName = profile?.name || (typeof window !== 'undefined' ? localStorage.getItem('vocat_user_name') : null) || defaultName;
+              const activeRole = profile?.role || storedAccountRole || get().accountRole || 'student';
               
               set({
                 accountRole: activeRole,
@@ -410,9 +420,11 @@ export const useVocaStore = create<VocaState>((set, get) => ({
               if (typeof window !== 'undefined') {
                 localStorage.setItem('vocat_invite_verified', 'true');
                 localStorage.setItem('vocat_user_name', activeName);
+                localStorage.setItem('vocat_account_role', activeRole);
+                localStorage.setItem('vocat_user_role', activeRole);
               }
 
-              if (!profile || !profile.name) {
+              if (!profile || profile.role !== activeRole || !profile.name) {
                 await client.from('profiles').upsert({
                   id: userId,
                   email: userEmail,
@@ -449,8 +461,12 @@ export const useVocaStore = create<VocaState>((set, get) => ({
             .eq('id', userId)
             .maybeSingle();
 
-          const activeName = profile?.name || localStorage.getItem('vocat_user_name') || defaultName;
-          const activeRole = profile?.role || get().accountRole || 'student';
+          const storedAccountRole = (typeof window !== 'undefined'
+            ? (localStorage.getItem('vocat_account_role') || localStorage.getItem('vocat_user_role'))
+            : null) as UserRole | null;
+
+          const activeName = profile?.name || (typeof window !== 'undefined' ? localStorage.getItem('vocat_user_name') : null) || defaultName;
+          const activeRole = profile?.role || storedAccountRole || get().accountRole || 'student';
 
           set({
             accountRole: activeRole,
@@ -461,9 +477,11 @@ export const useVocaStore = create<VocaState>((set, get) => ({
           if (typeof window !== 'undefined') {
             localStorage.setItem('vocat_invite_verified', 'true');
             localStorage.setItem('vocat_user_name', activeName);
+            localStorage.setItem('vocat_account_role', activeRole);
+            localStorage.setItem('vocat_user_role', activeRole);
           }
 
-          if (!profile || !profile.name) {
+          if (!profile || profile.role !== activeRole || !profile.name) {
             await client.from('profiles').upsert({
               id: userId,
               email: userEmail,
