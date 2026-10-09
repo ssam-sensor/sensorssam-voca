@@ -40,10 +40,18 @@ export const RoleSelectModal: React.FC<RoleSelectModalProps> = ({ isOpen }) => {
       const res = await verifyInviteCode(inviteCode, selectedRole, nickname);
       if (!res.success) {
         setErrorMsg(res.error || '올바른 초대 코드가 아닙니다. 센서쌤에게 가입 코드를 확인하세요.');
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Check if active Google OAuth session exists
+      const currentEmail = useVocaStore.getState().userEmail;
+      if (!currentEmail) {
+        // Trigger Google OAuth sign-in to complete registration and store profile in DB!
+        await signInWithGoogle();
       }
     } catch (err: any) {
       setErrorMsg(err.message || '인증 처리 중 오류가 발생했습니다.');
-    } finally {
       setIsSubmitting(false);
     }
   };

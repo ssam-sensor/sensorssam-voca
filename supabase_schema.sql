@@ -8,6 +8,7 @@ create extension if not exists "uuid-ossp";
 create table if not exists profiles (
   id uuid references auth.users on delete cascade primary key,
   email text not null,
+  name text, -- 별명 / 닉네임 (e.g. "센서쌤", "길동튜터")
   role text check (role in ('tutor', 'student')) default 'student',
   is_verified boolean default false, -- 가입용 초대 코드(비밀 패스코드) 인증 여부
   gemini_api_key text, -- 암호화 저장 또는 로컬 관리
@@ -15,6 +16,7 @@ create table if not exists profiles (
 );
 
 -- 기존 profiles 테이블이 다른 앱에서 이미 생성되어 있더라도 안전하게 필요한 컬럼 추가
+alter table profiles add column if not exists name text;
 alter table profiles add column if not exists role text default 'student';
 alter table profiles add column if not exists is_verified boolean default false;
 alter table profiles add column if not exists gemini_api_key text;
