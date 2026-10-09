@@ -198,10 +198,10 @@ export const StudentDashboard: React.FC = () => {
             <div className="w-full sm:w-auto flex flex-wrap items-center gap-2">
               <button
                 onClick={() => setIsReportOpen(true)}
-                className="flex items-center justify-center gap-1.5 px-4 py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs border border-slate-200 transition-all active:scale-95"
+                className="flex items-center justify-center gap-1.5 px-4 py-3 rounded-2xl bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs border border-blue-200 transition-all active:scale-95 shadow-xs"
               >
                 <FileSpreadsheet className="w-4 h-4 text-blue-600" />
-                <span>학습 결과 리포트</span>
+                <span>나의 학습 결과 및 보고서</span>
               </button>
               <button
                 onClick={() => {
@@ -223,11 +223,12 @@ export const StudentDashboard: React.FC = () => {
                 배정 & 개인 단어장 목록 (총 {wordbooks.length}개)
               </label>
               <span className="text-[11px] text-slate-400 font-medium">
-                * 개인 단어장 삭제 가능
+                * 데스크톱 PC/모바일 자동 줄바꿈 지원
               </span>
             </div>
 
-            <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
+            {/* Auto-wrap flex container so desktop PC users see all wordbooks without cutoff */}
+            <div className="flex flex-wrap items-center gap-2 pt-1 max-h-80 overflow-y-auto pr-1">
               {wordbooks.map((wb) => {
                 const isActive = wb.id === selectedWb.id;
                 const isStudentCreated = Boolean(wb.is_student_created || wb.creator_role === 'student' || wb.tutor_name === '학생 (개인 단어장)');
@@ -236,9 +237,9 @@ export const StudentDashboard: React.FC = () => {
                   <div
                     key={wb.id}
                     onClick={() => setActiveWordbookId(wb.id)}
-                    className={`px-3.5 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs font-bold shrink-0 transition-all flex items-center gap-3 border cursor-pointer ${
+                    className={`px-3.5 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-3 border cursor-pointer ${
                       isActive
-                        ? 'bg-blue-600 text-white shadow-xs border-blue-600'
+                        ? 'bg-blue-600 text-white shadow-xs border-blue-600 ring-2 ring-blue-300'
                         : 'bg-slate-50 text-slate-700 hover:bg-slate-100 border-slate-200'
                     }`}
                   >
@@ -275,47 +276,66 @@ export const StudentDashboard: React.FC = () => {
           </div>
         </div>
       ) : (
-        <div className="p-12 text-center rounded-2xl bg-white border border-slate-200 text-slate-500 text-xs shadow-xs space-y-3">
-          <p>선택된 튜터의 단어장이 없습니다. 상단에서 튜터를 선택하거나 스스로 단어장을 추가해보세요!</p>
-          <button
-            onClick={() => setIsFormModalOpen(true)}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            <span>새 단어장 직접 추가하기</span>
-          </button>
+        <div className="p-12 text-center rounded-2xl bg-white border border-slate-200 text-slate-500 text-xs shadow-xs space-y-4">
+          <p className="font-medium">선택된 튜터의 단어장이 없습니다. 상단에서 튜터를 선택하거나 스스로 단어장을 추가해보세요!</p>
+          <div className="flex items-center justify-center gap-3">
+            <button
+              onClick={() => setIsReportOpen(true)}
+              className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs transition-all active:scale-95"
+            >
+              <FileSpreadsheet className="w-4 h-4" />
+              <span>나의 학습 결과 및 보고서 조회</span>
+            </button>
+            <button
+              onClick={() => setIsFormModalOpen(true)}
+              className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              <span>새 단어장 직접 추가하기</span>
+            </button>
+          </div>
         </div>
       )}
 
       {/* Main Mode Sub-Navigation Tabs */}
-      <div className="flex border-b border-slate-200 gap-2 sm:gap-6 text-xs font-bold">
-        <button
-          onClick={() => setActiveTab('study')}
-          className={`flex-1 sm:flex-initial pb-3 border-b-2 flex items-center justify-center sm:justify-start gap-1.5 sm:gap-2 transition-colors ${
-            activeTab === 'study'
-              ? 'border-blue-600 text-blue-600 font-extrabold'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
-          }`}
-        >
-          <BookOpen className="w-4 h-4 shrink-0" />
-          <span>플래시카드 학습</span>
-        </button>
+      <div className="flex flex-wrap items-center justify-between border-b border-slate-200 gap-2 text-xs font-bold pt-2">
+        <div className="flex items-center gap-2 sm:gap-6">
+          <button
+            onClick={() => setActiveTab('study')}
+            className={`pb-3 border-b-2 flex items-center justify-center sm:justify-start gap-1.5 sm:gap-2 transition-colors ${
+              activeTab === 'study'
+                ? 'border-blue-600 text-blue-600 font-extrabold'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <BookOpen className="w-4 h-4 shrink-0" />
+            <span>플래시카드 학습</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('incorrect')}
+            className={`pb-3 border-b-2 flex items-center justify-center sm:justify-start gap-1.5 sm:gap-2 transition-colors relative ${
+              activeTab === 'incorrect'
+                ? 'border-rose-600 text-rose-600 font-extrabold'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+            <span>오답 노트</span>
+            {unresolvedWrongCount > 0 && (
+              <span className="px-1.5 py-0.5 rounded-full bg-rose-600 text-white text-[10px] font-extrabold">
+                {unresolvedWrongCount}
+              </span>
+            )}
+          </button>
+        </div>
 
         <button
-          onClick={() => setActiveTab('incorrect')}
-          className={`flex-1 sm:flex-initial pb-3 border-b-2 flex items-center justify-center sm:justify-start gap-1.5 sm:gap-2 transition-colors relative ${
-            activeTab === 'incorrect'
-              ? 'border-rose-600 text-rose-600 font-extrabold'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
-          }`}
+          onClick={() => setIsReportOpen(true)}
+          className="pb-3 flex items-center gap-1.5 px-3 py-1 rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-100 font-extrabold transition-all border border-blue-200 active:scale-95 cursor-pointer shrink-0"
         >
-          <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-          <span>오답 노트</span>
-          {unresolvedWrongCount > 0 && (
-            <span className="px-1.5 py-0.5 rounded-full bg-rose-600 text-white text-[10px] font-extrabold">
-              {unresolvedWrongCount}
-            </span>
-          )}
+          <FileSpreadsheet className="w-4 h-4 text-blue-600 shrink-0" />
+          <span>나의 학습 결과 리포트 조회</span>
         </button>
       </div>
 
