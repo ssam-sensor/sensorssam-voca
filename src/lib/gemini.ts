@@ -87,7 +87,28 @@ async function callGeminiWithFallback(
 }
 
 /**
- * Extract word list from book image/PDF file using Gemini Multimodal OCR with Fallback Chain
+ * Helper function to call server-side Next.js API route (/api/gemini)
+ */
+async function callServerGeminiApi(payload: any): Promise<any> {
+  const customApiKey = typeof window !== 'undefined' ? localStorage.getItem('vocat_gemini_api_key') : null;
+  const res = await fetch('/api/gemini', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      ...payload,
+      customApiKey: customApiKey || undefined
+    })
+  });
+
+  const data = await res.json();
+  if (!res.ok || data.error) {
+    throw new Error(data.error || 'Gemini AI 서비스 처리 중 오류가 발생했습니다.');
+  }
+  return data;
+}
+
+/**
+ * Extract word list from book image/PDF file using Gemini Multimodal OCR
  * Supports 'all' (entire page) or 'marked' (only circled/highlighted/underlined words)
  */
 export async function extractWordsFromMultimodalFile(
@@ -95,126 +116,33 @@ export async function extractWordsFromMultimodalFile(
   mimeType: string,
   mode: 'all' | 'marked' = 'all'
 ): Promise<string> {
-  const apiKey = getGeminiApiKey();
-  
-  if (!apiKey) {
-    throw new Error('Gemini API 키가 설정되지 않았습니다. .env.local 환경 변수 설정을 확인해 주세요.');
-  }
-
-  const ai = new GoogleGenAI({ apiKey });
-
-  const promptAll = `제공된 교재 이미지/PDF 페이지에서 표제어, 단어, 숙어를 순서대로 추출하여 아래 포맷에 맞춰 텍스트로만 출력해 줘.
-
-[출력 포맷 규칙]
-단어, 발음기호, 품사, 한글 뜻
-
-- 대괄호 [] 없는 발음기호 작성
-- 복수 품사 및 복수 뜻은 세미콜론(;)으로 구분
-- 마크다운 기호, 번호 매기기, 부가 설명 없이 각 단어를 한 줄씩 위 포맷대로만 출력할 것
-- 예시:
-opposite, ápəzit, 형용사; 명사, 반대쪽의; 정반대의; 반대의 사람[일/물건]
-accompany, əkʌ́mpəni, 동사, 동반하다; 수반하다; 반주하다
-keep track of, 숙어, 숙어, ~을 기록하다; ~의 자국을 뒤밟다`;
-
-  const promptMarked = `제공된 교재 이미지/문서에서 손글씨로 '동그라미(원)'가 쳐져 있거나, '형광펜/밑줄'로 하이라이트 표시된 단어 및 숙어만 찾아서 추출해 줘.
-
-[추출 및 작성 규칙]
-1. 표시가 없는 일반 단어는 모두 제외하고, 오직 체크/표시된 단어만 추출할 것.
-2. 추출된 단어의 발음기호, 품사, 한글 뜻은 교재에 적힌 내용을 그대로 매칭하여 작성할 것.
-3. 출력 포맷:
-   단어, 발음기호, 품사, 한글 뜻
-   - 대괄호 [] 없는 발음기호
-   - 복수 품사 및 복수 뜻은 세미콜론(;)으로 구분
-   - 마크다운이나 부가 설명 없이 오직 한 줄에 한 단어씩 포맷대로만 출력할 것.
-   - 예시:
-   opposite, ápəzit, 형용사; 명사, 반대쪽의; 정반대의; 반대의 사람[일/물건]
-   accompany, əkʌ́mpəni, 동사, 동반하다; 수반하다; 반주하다
-   keep track of, 숙어, 숙어, ~을 기록하다; ~의 자국을 뒤밟다`;
-
-  const promptText = mode === 'marked' ? promptMarked : promptAll;
-
-  try {
-    const response = await callGeminiWithFallback(ai, {
-      contents: [
-        {
-          inlineData: {
-            mimeType: mimeType,
-            data: base64Data
-          }
-        },
-        {
-          text: promptText
-        }
-      ]
-    });
-
-    return response.text || '';
-  } catch (err: any) {
-    console.error('Gemini multimodal OCR error:', err);
-    throw err;
-  }
+  const data = await callServerGeminiApi({
+    action: 'extract_multimodal',
+    base64Data,
+    mimeType,
+    mode
+  });
+  return data.result || '';
 }
 
 /**
- * Auto-generate a wordbook using Gemini AI with Fallback Chain
+ * Auto-generate a wordbook using Gemini AI
  */
 export async function generateWordbookWithGemini(
   topicOrText: string,
   wordCount: number = 10
 ): Promise<{ title: string; chapter: string; words: VocaBatchItem[] }> {
-  const apiKey = getGeminiApiKey();
-  
-  if (!apiKey) {
-    throw new Error('Gemini API 키가 설정되지 않았습니다. .env.local 환경 변수 설정을 확인해 주세요.');
-  }
+  const data = await callServerGeminiApi({
+    action: 'generate_wordbook',
+    topicOrText,
+    wordCount
+  });
 
-  const ai = new GoogleGenAI({ apiKey });
-
-  const prompt = `You are an expert English Vocabulary Tutor creating a SensorSsam Voca dataset for Korean students.
-Topic / Reference Text: "${topicOrText}"
-Number of words to generate: ${wordCount}
-
-Generate a JSON object with the following structure:
-{
-  "title": "Short Course / Book Title (e.g., CSAT Essential Voca, Tech English)",
-  "chapter": "DAY 01",
-  "words": [
-    {
-      "word": "English word or idiom",
-      "pronunciation": "Phonetic symbols WITHOUT square brackets (e.g. pə̀ːrsəvíər or æpl)",
-      "pos": "Part of speech in Korean (e.g. 동사, 명사, 형용사, 숙어)",
-      "meaning": "Korean meaning (semicolon separated if multiple, e.g. 인내하다; 끈기있게 계속하다)",
-      "example_sentence": "Natural English sentence containing the word",
-      "example_translation": "Natural Korean translation of the example sentence",
-      "is_spelling_priority": true or false (true if this word is essential for spelling practice),
-      "is_idiom": true or false (true if it is a multi-word idiom or phrase)
-    }
-  ]
-}
-
-Return ONLY valid raw JSON without markdown codeblock wrapper or extra text.`;
-
-  try {
-    const response = await callGeminiWithFallback(ai, {
-      contents: prompt,
-      config: {
-        temperature: 0.3,
-        responseMimeType: 'application/json'
-      }
-    });
-
-    const text = response.text || '';
-    const cleaned = text.replace(/```json\n?|\n?```/g, '').trim();
-    const parsed = JSON.parse(cleaned);
-    return {
-      title: parsed.title || 'AI 맞춤 단어장',
-      chapter: parsed.chapter || 'DAY 01',
-      words: parsed.words || []
-    };
-  } catch (err: any) {
-    console.error('Failed to parse Gemini JSON output:', err);
-    throw err;
-  }
+  return {
+    title: data.title || 'AI 맞춤 단어장',
+    chapter: data.chapter || 'DAY 01',
+    words: data.words || []
+  };
 }
 
 /**
