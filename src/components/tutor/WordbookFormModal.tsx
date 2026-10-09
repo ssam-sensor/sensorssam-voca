@@ -38,10 +38,6 @@ export const WordbookFormModal: React.FC<WordbookFormModalProps> = ({ isOpen, on
   // Parsed Words Preview Table
   const [parsedWords, setParsedWords] = useState<VocaBatchItem[]>([]);
 
-  // API Key Management State
-  const [apiKeyInput, setApiKeyInput] = useState('');
-  const [showApiKeyInput, setShowApiKeyInput] = useState(false);
-
   // Reset form state to initial clean slate
   const resetForm = () => {
     setTitle('');
@@ -54,8 +50,6 @@ export const WordbookFormModal: React.FC<WordbookFormModalProps> = ({ isOpen, on
     setBatchRawText('');
     setParsedWords([]);
     setActiveTab('ocr');
-    setApiKeyInput('');
-    setShowApiKeyInput(false);
   };
 
   const handleClose = () => {
@@ -71,26 +65,6 @@ export const WordbookFormModal: React.FC<WordbookFormModalProps> = ({ isOpen, on
 
   if (!isOpen) return null;
 
-  const handleSaveApiKey = () => {
-    const key = apiKeyInput.trim();
-    if (!key) {
-      alert('구글 Gemini API 키(AIzaSy...)를 입력해 주세요.');
-      return;
-    }
-    if (!key.startsWith('AIza')) {
-      if (!confirm('입력하신 키가 구글 API 키의 표준 형태(AIzaSy...)와 다릅니다.\n이 키로 저장하시겠습니까?')) {
-        return;
-      }
-    }
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('vocat_gemini_api_key', key);
-    }
-    setShowApiKeyInput(false);
-    setOcrError(null);
-    setAiError(null);
-    alert('Gemini API 키가 성공적으로 저장되었습니다!');
-  };
-
   // Handle Multimodal File OCR Extraction
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -102,13 +76,6 @@ export const WordbookFormModal: React.FC<WordbookFormModalProps> = ({ isOpen, on
   const handleOcrExtract = async () => {
     if (!selectedFile) {
       setOcrError('교재 이미지(JPG, PNG, WEBP) 또는 PDF 파일을 선택해 주세요.');
-      return;
-    }
-
-    const apiKey = getGeminiApiKey();
-    if (!apiKey) {
-      setShowApiKeyInput(true);
-      setOcrError('Gemini API 키가 필요합니다. 아래 입력란에 구글 Gemini API 키를 입력해 주세요.');
       return;
     }
 
@@ -160,12 +127,6 @@ export const WordbookFormModal: React.FC<WordbookFormModalProps> = ({ isOpen, on
   const handleAiGenerate = async () => {
     if (!aiTopic.trim()) {
       setAiError('주제 또는 원문 텍스트를 입력해주세요.');
-      return;
-    }
-
-    const apiKey = getGeminiApiKey();
-    if (!apiKey) {
-      alert('Gemini API 키가 설정되지 않았습니다. .env.local 환경 변수 설정을 확인해 주세요.');
       return;
     }
 
@@ -350,19 +311,10 @@ export const WordbookFormModal: React.FC<WordbookFormModalProps> = ({ isOpen, on
           {activeTab === 'ocr' && (
             <div className="space-y-5">
               <div className="p-4 rounded-2xl bg-blue-50 border border-blue-200 text-xs text-blue-950 space-y-1">
-                <div className="flex items-center justify-between">
-                  <p className="font-bold text-blue-900 flex items-center gap-1.5">
-                    <Sparkles className="w-4 h-4 text-blue-600" />
-                    Gemini Flash 멀티모달 OCR 교재 자동 추출
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => setShowApiKeyInput(!showApiKeyInput)}
-                    className="text-[11px] font-bold text-blue-700 hover:text-blue-900 bg-blue-100/70 hover:bg-blue-200 px-2.5 py-1 rounded-lg transition-colors"
-                  >
-                    🔑 API 키 설정/변경
-                  </button>
-                </div>
+                <p className="font-bold text-blue-900 flex items-center gap-1.5">
+                  <Sparkles className="w-4 h-4 text-blue-600" />
+                  Gemini Flash 멀티모달 OCR 교재 자동 추출
+                </p>
                 <p className="text-slate-600 leading-relaxed">
                   영어 교재 페이지 촬영 사진(JPG, PNG, WEBP)이나 교재 PDF 문서를 올려주시면 AI가 단어, 발음기호, 품사, 한글 뜻을 자동으로 파싱합니다.
                 </p>
@@ -372,44 +324,6 @@ export const WordbookFormModal: React.FC<WordbookFormModalProps> = ({ isOpen, on
                 <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
                   <span>{ocrError}</span>
-                </div>
-              )}
-
-              {(!getGeminiApiKey() || showApiKeyInput) && (
-                <div className="p-4 rounded-2xl bg-amber-50 border border-amber-300 space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-extrabold text-amber-900 flex items-center gap-1.5">
-                      <Sparkles className="w-4 h-4 text-amber-600" />
-                      Gemini API 키 연결 설정
-                    </span>
-                    <a
-                      href="https://aistudio.google.com/app/apikey"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-[11px] font-bold text-blue-600 hover:underline"
-                    >
-                      무료 API 키 발급받기 (Google AI Studio) &rarr;
-                    </a>
-                  </div>
-                  <p className="text-[11px] text-amber-800 font-medium leading-relaxed">
-                    교재 분석 및 단어 추출을 위해 구글 Gemini API 키(<code>AIzaSy...</code>)가 필요합니다.
-                  </p>
-                  <div className="flex items-center gap-2 pt-1">
-                    <input
-                      type="password"
-                      value={apiKeyInput}
-                      onChange={(e) => setApiKeyInput(e.target.value)}
-                      placeholder="구글 Gemini API 키 입력 (AIzaSy...)"
-                      className="flex-1 px-3.5 py-2 rounded-xl bg-white border border-amber-300 text-xs font-mono font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleSaveApiKey}
-                      className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs transition-all shrink-0"
-                    >
-                      API 키 저장
-                    </button>
-                  </div>
                 </div>
               )}
 
