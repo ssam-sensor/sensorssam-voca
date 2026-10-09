@@ -112,13 +112,6 @@ export const StudentDashboard: React.FC = () => {
 
           <div className="flex items-center gap-2">
             <button
-              onClick={openStudentReport}
-              className="flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs border border-slate-200 transition-all active:scale-95 cursor-pointer"
-            >
-              <FileSpreadsheet className="w-4 h-4 text-blue-600" />
-              <span>나의 학습 결과 및 보고서</span>
-            </button>
-            <button
               onClick={() => setIsFormModalOpen(true)}
               className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm transition-all active:scale-95 shrink-0"
             >
@@ -196,13 +189,6 @@ export const StudentDashboard: React.FC = () => {
             </div>
 
             <div className="w-full sm:w-auto flex flex-wrap items-center gap-2">
-              <button
-                onClick={openStudentReport}
-                className="flex items-center justify-center gap-1.5 px-4 py-3 rounded-2xl bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs border border-blue-200 transition-all active:scale-95 shadow-xs cursor-pointer"
-              >
-                <FileSpreadsheet className="w-4 h-4 text-blue-600" />
-                <span>나의 학습 결과 및 보고서</span>
-              </button>
               <button
                 onClick={() => {
                   setQuizMode('ai');
@@ -298,44 +284,34 @@ export const StudentDashboard: React.FC = () => {
       )}
 
       {/* Main Mode Sub-Navigation Tabs */}
-      <div className="flex flex-wrap items-center justify-between border-b border-slate-200 gap-2 text-xs font-bold pt-2">
-        <div className="flex items-center gap-2 sm:gap-6">
-          <button
-            onClick={() => setActiveTab('study')}
-            className={`pb-3 border-b-2 flex items-center justify-center sm:justify-start gap-1.5 sm:gap-2 transition-colors ${
-              activeTab === 'study'
-                ? 'border-blue-600 text-blue-600 font-extrabold'
-                : 'border-transparent text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            <BookOpen className="w-4 h-4 shrink-0" />
-            <span>플래시카드 학습</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('incorrect')}
-            className={`pb-3 border-b-2 flex items-center justify-center sm:justify-start gap-1.5 sm:gap-2 transition-colors relative ${
-              activeTab === 'incorrect'
-                ? 'border-rose-600 text-rose-600 font-extrabold'
-                : 'border-transparent text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-            <span>오답 노트</span>
-            {unresolvedWrongCount > 0 && (
-              <span className="px-1.5 py-0.5 rounded-full bg-rose-600 text-white text-[10px] font-extrabold">
-                {unresolvedWrongCount}
-              </span>
-            )}
-          </button>
-        </div>
+      <div className="flex border-b border-slate-200 gap-2 sm:gap-6 text-xs font-bold pt-2">
+        <button
+          onClick={() => setActiveTab('study')}
+          className={`pb-3 border-b-2 flex items-center justify-center sm:justify-start gap-1.5 sm:gap-2 transition-colors ${
+            activeTab === 'study'
+              ? 'border-blue-600 text-blue-600 font-extrabold'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <BookOpen className="w-4 h-4 shrink-0" />
+          <span>플래시카드 학습</span>
+        </button>
 
         <button
-          onClick={openStudentReport}
-          className="pb-3 flex items-center gap-1.5 px-3 py-1 rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-100 font-extrabold transition-all border border-blue-200 active:scale-95 cursor-pointer shrink-0"
+          onClick={() => setActiveTab('incorrect')}
+          className={`pb-3 border-b-2 flex items-center justify-center sm:justify-start gap-1.5 sm:gap-2 transition-colors relative ${
+            activeTab === 'incorrect'
+              ? 'border-rose-600 text-rose-600 font-extrabold'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
         >
-          <FileSpreadsheet className="w-4 h-4 text-blue-600 shrink-0" />
-          <span>나의 학습 결과 리포트 조회</span>
+          <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+          <span>오답 노트</span>
+          {unresolvedWrongCount > 0 && (
+            <span className="px-1.5 py-0.5 rounded-full bg-rose-600 text-white text-[10px] font-extrabold">
+              {unresolvedWrongCount}
+            </span>
+          )}
         </button>
       </div>
 
