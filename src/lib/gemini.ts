@@ -14,8 +14,8 @@ export function getGeminiApiKey(): string {
  */
 const FALLBACK_MODEL_CHAIN = [
   'gemini-2.0-flash',
-  'gemini-1.5-flash',
-  'gemini-1.5-pro'
+  'gemini-2.0-flash-lite',
+  'gemini-1.5-flash'
 ];
 
 /**
@@ -40,29 +40,19 @@ async function callGeminiWithFallback(
     } catch (err: any) {
       lastError = err;
       console.warn(`[Gemini API Warning] Model '${model}' call failed:`, err?.message || err);
-
-      const errStr = String(err?.message || err || '').toLowerCase();
-      const isTransientOrOverloaded =
-        errStr.includes('503') ||
-        errStr.includes('high demand') ||
-        errStr.includes('unavailable') ||
-        errStr.includes('overloaded') ||
-        errStr.includes('429') ||
-        errStr.includes('resource_exhausted') ||
-        errStr.includes('500');
-
-      if (isTransientOrOverloaded) {
-        // Continue to fallback model immediately
-        continue;
-      } else {
-        // Try fallback candidate model anyway
-        continue;
-      }
+      // Continue to next candidate model
+      continue;
     }
   }
 
   // Handle ultimate failure after all fallback candidates failed
-  const finalErrStr = String(lastError?.message || lastError || '').toLowerCase();
+  const finalErrRaw = String(lastError?.message || lastError || '');
+  const finalErrStr = finalErrRaw.toLowerCase();
+
+  if (finalErrStr.includes('api_key') || finalErrStr.includes('invalid') || finalErrStr.includes('400') || finalErrStr.includes('403')) {
+    throw new Error('입력하신 Gemini API 키가 올바르지 않거나 권한이 없습니다. Google AI Studio에서 발급받은 API 키를 확인해 주세요.');
+  }
+
   if (
     finalErrStr.includes('503') ||
     finalErrStr.includes('high demand') ||
@@ -71,10 +61,14 @@ async function callGeminiWithFallback(
     finalErrStr.includes('429') ||
     finalErrStr.includes('resource_exhausted')
   ) {
-    throw new Error('구글 AI 서버 트래픽이 일시적으로 급증했습니다. 3~5초 후 다시 시도해 주세요.');
+    throw new Error('구글 AI 서버 한도 초과 또는 트래픽 급증입니다. 3~5초 후 다시 시도해 주세요.');
   }
 
-  throw new Error(lastError?.message || 'Gemini AI 서비스 호출 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.');
+  if (finalErrStr.includes('404') || finalErrStr.includes('not_found')) {
+    throw new Error('선택한 AI 모델을 찾을 수 없습니다. API 키 상태를 확인 후 다시 시도해 주세요.');
+  }
+
+  throw new Error('Gemini AI 서비스 호출 중 오류가 발생했습니다. API 키를 확인해 주세요.');
 }
 
 /**
