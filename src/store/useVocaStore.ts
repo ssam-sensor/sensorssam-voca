@@ -369,21 +369,38 @@ export const useVocaStore = create<VocaState>((set, get) => ({
         client.auth.onAuthStateChange(async (event, session) => {
           if (session?.user) {
             const userId = session.user.id;
+            const userEmail = session.user.email || '';
+            const defaultName = userEmail ? userEmail.split('@')[0] : `user-${userId.slice(0, 5)}`;
             set({
-              userEmail: session.user.email || '',
+              userEmail,
               tutorId: userId,
               studentId: userId,
             });
             try {
-              const { data: profile } = await client.from('profiles').select('*').eq('id', userId).single();
-              if (profile) {
-                set({
-                  accountRole: profile.role,
-                  userRole: profile.role,
-                  userName: profile.name || '',
-                  isVerifiedWithInviteCode: true
-                });
-                if (typeof window !== 'undefined') localStorage.setItem('vocat_invite_verified', 'true');
+              let { data: profile } = await client.from('profiles').select('*').eq('id', userId).maybeSingle();
+              const activeName = profile?.name || localStorage.getItem('vocat_user_name') || defaultName;
+              const activeRole = profile?.role || get().accountRole || 'student';
+              
+              set({
+                accountRole: activeRole,
+                userRole: activeRole,
+                userName: activeName,
+                isVerifiedWithInviteCode: true
+              });
+              if (typeof window !== 'undefined') {
+                localStorage.setItem('vocat_invite_verified', 'true');
+                localStorage.setItem('vocat_user_name', activeName);
+              }
+
+              if (!profile || !profile.name) {
+                await client.from('profiles').upsert({
+                  id: userId,
+                  email: userEmail,
+                  name: activeName,
+                  role: activeRole,
+                  is_verified: true,
+                  created_at: new Date().toISOString()
+                }, { onConflict: 'id' });
               }
             } catch (e) {
               console.warn('Profile sync error:', e);
@@ -398,25 +415,43 @@ export const useVocaStore = create<VocaState>((set, get) => ({
 
         if (authData?.user) {
           userId = authData.user.id;
+          const userEmail = authData.user.email || '';
+          const defaultName = userEmail ? userEmail.split('@')[0] : `user-${userId.slice(0, 5)}`;
           set({
-            userEmail: authData.user.email || '',
+            userEmail,
             tutorId: userId,
             studentId: userId,
           });
 
-          const { data: profile } = await client
+          let { data: profile } = await client
             .from('profiles')
             .select('*')
             .eq('id', userId)
-            .single();
+            .maybeSingle();
 
-          if (profile) {
-            if (profile.role) set({ accountRole: profile.role, userRole: profile.role });
-            if (profile.name) set({ userName: profile.name });
-            if (profile.is_verified) {
-              set({ isVerifiedWithInviteCode: true });
-              if (typeof window !== 'undefined') localStorage.setItem('vocat_invite_verified', 'true');
-            }
+          const activeName = profile?.name || localStorage.getItem('vocat_user_name') || defaultName;
+          const activeRole = profile?.role || get().accountRole || 'student';
+
+          set({
+            accountRole: activeRole,
+            userRole: activeRole,
+            userName: activeName,
+            isVerifiedWithInviteCode: true
+          });
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('vocat_invite_verified', 'true');
+            localStorage.setItem('vocat_user_name', activeName);
+          }
+
+          if (!profile || !profile.name) {
+            await client.from('profiles').upsert({
+              id: userId,
+              email: userEmail,
+              name: activeName,
+              role: activeRole,
+              is_verified: true,
+              created_at: new Date().toISOString()
+            }, { onConflict: 'id' });
           }
         }
 

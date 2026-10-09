@@ -120,27 +120,14 @@ export const Navbar: React.FC = () => {
         {/* Right: Google OAuth Button & Role Badge */}
         <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
           {isLoggedIn && (
-            <div className="flex items-center gap-1.5">
-              <span className={`px-2.5 py-1 rounded-lg text-[11px] font-extrabold border ${
-                accountRole === 'tutor'
-                  ? 'bg-blue-50 text-blue-800 border-blue-300'
-                  : 'bg-emerald-50 text-emerald-800 border-emerald-300'
-              }`}>
-                {accountRole === 'tutor'
-                  ? (userRole === 'student' ? '👨‍🏫 튜터 회원 (학생 모드)' : '👨‍🏫 튜터 회원')
-                  : '🎓 학생 회원'}
-              </span>
-
-              {/* Edit Nickname Quick Button */}
-              <button
-                onClick={handleOpenNicknameModal}
-                className="flex items-center gap-1 text-[11px] font-extrabold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded-lg border border-blue-200 transition-colors"
-                title="별명/닉네임 변경"
-              >
-                <Edit3 className="w-3 h-3" />
-                <span>{userName ? `별명: ${userName}` : '[별명 등록]'}</span>
-              </button>
-            </div>
+            <button
+              onClick={handleOpenNicknameModal}
+              className="flex items-center gap-1.5 text-xs font-bold text-blue-700 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-xl border border-blue-200 shadow-2xs transition-colors"
+              title="별명(닉네임) 수정"
+            >
+              <Edit3 className="w-3.5 h-3.5 text-blue-600" />
+              <span>{userName ? `별명: ${userName}` : '[별명 수정]'}</span>
+            </button>
           )}
 
           <button

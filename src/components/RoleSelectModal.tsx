@@ -232,7 +232,7 @@ export const RoleSelectModal: React.FC<RoleSelectModalProps> = ({ isOpen }) => {
                     setInviteCode(e.target.value);
                     if (errorMsg) setErrorMsg(null);
                   }}
-                  placeholder="초대 코드 입력 (SSAM2026)"
+                  placeholder="초대 코드 입력"
                   className="w-full px-4 py-3 rounded-xl bg-white border border-slate-300 text-sm font-mono tracking-wider focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 text-slate-800 placeholder-slate-400 font-bold"
                 />
               </div>

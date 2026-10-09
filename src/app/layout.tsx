@@ -15,6 +15,13 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "SensorSsam Voca | AI-Powered Vocabulary Tutor",
   description: "1:1 맞춤형 보카 튜터링 & 스마트 AI 테스트 웹 애플리케이션 - SensorSsam Voca",
+  icons: {
+    icon: [
+      { url: "/icon.svg", type: "image/svg+xml" }
+    ],
+    shortcut: "/icon.svg",
+    apple: "/icon.svg",
+  },
 };
 
 export const viewport: Viewport = {
