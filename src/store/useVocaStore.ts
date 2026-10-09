@@ -612,22 +612,44 @@ export const useVocaStore = create<VocaState>((set, get) => ({
             ? JSON.parse(localStorage.getItem('vocat_student_wb_ids') || '[]')
             : [];
 
+          // Fetch all profiles map to resolve creator roles and tutor names accurately
+          const { data: allProfilesData } = await client.from('profiles').select('*');
+          const profilesMap: Record<string, any> = {};
+          (allProfilesData || []).forEach(p => {
+            profilesMap[p.id] = p;
+          });
+
           let rawWbs: Wordbook[] = (wbData || []).map(wb => {
+            const creatorProfile = wb.tutor_id ? profilesMap[wb.tutor_id] : null;
+
             const isStudentCreated = Boolean(
               wb.is_student_created ||
               wb.creator_role === 'student' ||
+              (creatorProfile && creatorProfile.role === 'student') ||
               localStudentWbIds.includes(wb.id) ||
               (wb.tutor_name && (wb.tutor_name.includes('학생') || wb.tutor_name.includes('개인'))) ||
-              (userId && wb.tutor_id === userId)
+              (userId && wb.tutor_id === userId && get().accountRole === 'student')
             );
 
             let tName = wb.tutor_name || '';
-            if (!tName || tName.includes('이튜터') || tName.includes('박튜터') || tName.includes('최튜터') ||
-                tName.includes('tutor-lee') || tName.includes('tutor-park') || tName.includes('tutor-choi')) {
-              const currentUserName = get().userName;
-              const formattedName = currentUserName ? (currentUserName.endsWith('튜터') ? currentUserName : `${currentUserName} 튜터`) : '튜터 배정';
-              tName = isStudentCreated ? '학생 (개인 단어장)' : formattedName;
+            const isLegacyDummy = !tName || tName.includes('이튜터') || tName.includes('박튜터') || tName.includes('최튜터') ||
+              tName.includes('tutor-lee') || tName.includes('tutor-park') || tName.includes('tutor-choi');
+
+            if (isStudentCreated) {
+              tName = '학생 (개인 단어장)';
+            } else if (creatorProfile && creatorProfile.role === 'tutor') {
+              const pName = (creatorProfile.name || '').trim();
+              if (pName) {
+                tName = pName.endsWith('튜터') ? pName : `${pName} 튜터`;
+              } else if (creatorProfile.email) {
+                tName = `${creatorProfile.email.split('@')[0]} 튜터`;
+              } else {
+                tName = 'SensorSsam (대표 튜터)';
+              }
+            } else if (isLegacyDummy) {
+              tName = 'SensorSsam (대표 튜터)';
             }
+
             return {
               ...wb,
               tutor_name: tName,
