@@ -2,11 +2,19 @@ import { GoogleGenAI } from '@google/genai';
 import { VocaBatchItem } from '@/types/database';
 
 export function getGeminiApiKey(): string {
+  // 1. Primary Priority: Web server environment variable (process.env.NEXT_PUBLIC_GEMINI_API_KEY)
+  const envKey = (process.env.NEXT_PUBLIC_GEMINI_API_KEY || process.env.GEMINI_API_KEY || '').trim();
+  if (envKey.length > 0) {
+    return envKey;
+  }
+
+  // 2. Secondary Fallback: User local storage override (only used if server env key is not set)
   if (typeof window !== 'undefined') {
     const customKey = localStorage.getItem('vocat_gemini_api_key');
     if (customKey && customKey.trim().length > 0) return customKey.trim();
   }
-  return process.env.NEXT_PUBLIC_GEMINI_API_KEY || '';
+
+  return '';
 }
 
 /**
