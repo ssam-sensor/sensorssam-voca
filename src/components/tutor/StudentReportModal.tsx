@@ -209,8 +209,20 @@ export const StudentReportModal: React.FC<StudentReportModalProps> = ({
     }
   }
 
-  // POS Weakness Distribution
-  const posCounts: Record<string, number> = {
+  // POS Weakness Distribution & Rate Calculation
+  const getPosCategory = (posStr?: string | null, isIdiom?: boolean): '명사' | '동사' | '형용사' | '숙어' | '기타' => {
+    if (isIdiom) return '숙어';
+    if (!posStr) return '기타';
+    const lower = posStr.toLowerCase().trim();
+    if (lower.includes('숙어') || lower.includes('idiom') || lower.includes('phr')) return '숙어';
+    if (lower.includes('동사') || lower.includes('verb') || lower.includes('v.')) return '동사';
+    if (lower.includes('명사') || lower.includes('noun') || lower.includes('n.')) return '명사';
+    if (lower.includes('형용사') || lower.includes('adj')) return '형용사';
+    return '기타';
+  };
+
+  // 1) Accumulate tested questions for each POS from the student's actual quizzes
+  const posTotalQuestions: Record<'명사' | '동사' | '형용사' | '숙어' | '기타', number> = {
     명사: 0,
     동사: 0,
     형용사: 0,
@@ -218,24 +230,81 @@ export const StudentReportModal: React.FC<StudentReportModalProps> = ({
     기타: 0
   };
 
-  targetIncorrectNotes.forEach(note => {
-    const w = note.word || allWordsList.find(item => item.id === note.word_id);
-    const posStr = (w?.pos || '').toLowerCase();
+  const posWrongCounts: Record<'명사' | '동사' | '형용사' | '숙어' | '기타', number> = {
+    명사: 0,
+    동사: 0,
+    형용사: 0,
+    숙어: 0,
+    기타: 0
+  };
 
-    if (posStr.includes('명사')) posCounts['명사'] += note.wrong_count;
-    else if (posStr.includes('동사')) posCounts['동사'] += note.wrong_count;
-    else if (posStr.includes('형용사')) posCounts['형용사'] += note.wrong_count;
-    else if (posStr.includes('숙어') || w?.is_idiom) posCounts['숙어'] += note.wrong_count;
-    else posCounts['기타'] += note.wrong_count;
+  targetQuizResults.forEach(q => {
+    const wbWords = words[q.wordbook_id] || allWordsList.filter(w => w.wordbook_id === q.wordbook_id);
+    if (wbWords && wbWords.length > 0) {
+      const testedSlice = (q.max_score && q.max_score < wbWords.length)
+        ? wbWords.slice(0, q.max_score)
+        : wbWords;
+
+      testedSlice.forEach(w => {
+        const cat = getPosCategory(w.pos, w.is_idiom);
+        posTotalQuestions[cat] += 1;
+      });
+    } else if (q.max_score && q.max_score > 0) {
+      const fallbackList = testedWords.length > 0 ? testedWords : allWordsList;
+      if (fallbackList.length > 0) {
+        const slice = fallbackList.slice(0, q.max_score);
+        slice.forEach(w => {
+          const cat = getPosCategory(w.pos, w.is_idiom);
+          posTotalQuestions[cat] += 1;
+        });
+      } else {
+        posTotalQuestions['기타'] += q.max_score;
+      }
+    }
   });
 
-  const totalWrongCountAll = Object.values(posCounts).reduce((a, b) => a + b, 0) || 1;
+  // 2) Accumulate wrong count for each POS from targetIncorrectNotes
+  targetIncorrectNotes.forEach(note => {
+    const w = note.word || allWordsList.find(item => item.id === note.word_id);
+    const cat = getPosCategory(w?.pos, w?.is_idiom);
+    posWrongCounts[cat] += note.wrong_count || 1;
+  });
 
-  // Sort weak POS
-  const weakPosList = Object.entries(posCounts)
-    .filter(([_, count]) => count > 0)
-    .sort(([_, a], [__, b]) => b - a)
-    .map(([pos]) => pos);
+  // 3) Calculate per-POS stats: total questions (denominator), wrong count (numerator), and error rate %
+  const posStats: Record<'명사' | '동사' | '형용사' | '숙어' | '기타', {
+    totalQuestions: number;
+    wrongCount: number;
+    wrongRatePct: number;
+  }> = {
+    명사: { totalQuestions: 0, wrongCount: 0, wrongRatePct: 0 },
+    동사: { totalQuestions: 0, wrongCount: 0, wrongRatePct: 0 },
+    형용사: { totalQuestions: 0, wrongCount: 0, wrongRatePct: 0 },
+    숙어: { totalQuestions: 0, wrongCount: 0, wrongRatePct: 0 },
+    기타: { totalQuestions: 0, wrongCount: 0, wrongRatePct: 0 }
+  };
+
+  (['명사', '동사', '형용사', '숙어', '기타'] as const).forEach(cat => {
+    const tested = posTotalQuestions[cat];
+    const wrong = posWrongCounts[cat];
+    const totalQ = Math.max(tested, wrong);
+    const rate = totalQ > 0 ? Math.min(100, Math.round((wrong / totalQ) * 100)) : 0;
+    posStats[cat] = {
+      totalQuestions: totalQ,
+      wrongCount: wrong,
+      wrongRatePct: rate
+    };
+  });
+
+  // Sort weak POS by highest error rate first, then by wrong count
+  const weakPosList = (['명사', '동사', '형용사', '숙어', '기타'] as const)
+    .filter(cat => posStats[cat].totalQuestions > 0 && posStats[cat].wrongCount > 0)
+    .sort((a, b) => {
+      if (posStats[b].wrongRatePct !== posStats[a].wrongRatePct) {
+        return posStats[b].wrongRatePct - posStats[a].wrongRatePct;
+      }
+      return posStats[b].wrongCount - posStats[a].wrongCount;
+    })
+    .map(cat => `${cat}(오답률 ${posStats[cat].wrongRatePct}%)`);
 
   // 3) High-priority wrong words
   const hydratedNotes = targetIncorrectNotes.map(n => ({
@@ -435,7 +504,7 @@ export const StudentReportModal: React.FC<StudentReportModalProps> = ({
           <div className="space-y-3 pt-2 border-t border-slate-100">
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
               <TrendingUp className="w-4 h-4 text-blue-600" />
-              2. 파트별 세부 성취도 & 품사별 오답 분석
+              2. 파트별 세부 성취도 & 품사별 오답률 분석
             </h3>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -468,26 +537,69 @@ export const StudentReportModal: React.FC<StudentReportModalProps> = ({
 
               {/* POS Weakness Visual Distribution */}
               <div className="p-5 rounded-2xl bg-white border border-slate-200 space-y-3 shadow-xs">
-                <h4 className="text-sm font-bold text-slate-800">품사별 오답 발생 비중</h4>
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-bold text-slate-800">품사별 오답률 분석</h4>
+                  <span className="text-[11px] text-slate-400">품사별 출제 문항 대비 오답률</span>
+                </div>
 
-                <div className="space-y-2 text-xs">
-                  {Object.entries(posCounts).map(([posName, count]) => {
-                    const pct = Math.round((count / totalWrongCountAll) * 100);
+                <div className="space-y-2.5 text-xs">
+                  {(['명사', '동사', '형용사', '숙어', '기타'] as const).map(posName => {
+                    const stat = posStats[posName];
                     return (
                       <div key={posName} className="space-y-1">
-                        <div className="flex justify-between font-semibold text-slate-700">
-                          <span>{posName}</span>
-                          <span>{count}회 오답 ({pct}%)</span>
+                        <div className="flex justify-between items-center font-semibold text-slate-700">
+                          <span className="flex items-center gap-1.5">
+                            <span
+                              className={`w-2 h-2 rounded-full ${
+                                posName === '명사' ? 'bg-blue-500' :
+                                posName === '동사' ? 'bg-emerald-500' :
+                                posName === '형용사' ? 'bg-amber-500' :
+                                posName === '숙어' ? 'bg-purple-500' : 'bg-slate-400'
+                              }`}
+                            />
+                            <span>{posName}</span>
+                          </span>
+                          <div className="text-right text-[11px] space-x-1.5">
+                            {stat.totalQuestions > 0 ? (
+                              <>
+                                <span className="text-slate-500 font-normal">
+                                  {stat.wrongCount} / {stat.totalQuestions}문항
+                                </span>
+                                <span
+                                  className={`font-bold ${
+                                    stat.wrongRatePct >= 50
+                                      ? 'text-rose-600'
+                                      : stat.wrongRatePct >= 20
+                                      ? 'text-amber-600'
+                                      : stat.wrongRatePct > 0
+                                      ? 'text-blue-600'
+                                      : 'text-emerald-600'
+                                  }`}
+                                >
+                                  오답률 {stat.wrongRatePct}%
+                                </span>
+                              </>
+                            ) : (
+                              <span className="text-slate-400 font-normal">출제 문항 없음</span>
+                            )}
+                          </div>
                         </div>
                         <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
                           <div
-                            className={`h-full rounded-full ${
-                              posName === '명사' ? 'bg-blue-500' :
-                              posName === '동사' ? 'bg-emerald-500' :
-                              posName === '형용사' ? 'bg-amber-500' :
-                              posName === '숙어' ? 'bg-purple-500' : 'bg-slate-400'
+                            className={`h-full rounded-full transition-all duration-300 ${
+                              stat.wrongRatePct >= 50
+                                ? 'bg-rose-500'
+                                : posName === '명사'
+                                ? 'bg-blue-500'
+                                : posName === '동사'
+                                ? 'bg-emerald-500'
+                                : posName === '형용사'
+                                ? 'bg-amber-500'
+                                : posName === '숙어'
+                                ? 'bg-purple-500'
+                                : 'bg-slate-400'
                             }`}
-                            style={{ width: `${pct}%` }}
+                            style={{ width: `${stat.totalQuestions > 0 ? stat.wrongRatePct : 0}%` }}
                           />
                         </div>
                       </div>
