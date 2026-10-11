@@ -55,7 +55,18 @@ interface VocaState {
   isStudentReportOpen: boolean;
   openStudentReport: () => void;
   closeStudentReport: () => void;
-  recordQuizResult: (wordbookId: string, totalScore: number, maxScore: number, wrongWordIds: { wordId: string; wrongAnswer: string }[]) => Promise<void>;
+  recordQuizResult: (
+    wordbookId: string,
+    totalScore: number,
+    maxScore: number,
+    wrongWordIds: { wordId: string; wrongAnswer: string }[],
+    partDetails?: {
+      spellingScore: number;
+      spellingMax: number;
+      meaningScore: number;
+      meaningMax: number;
+    }
+  ) => Promise<void>;
   resolveIncorrectNote: (noteId: string) => Promise<void>;
   addStudyTime: (seconds: number) => Promise<void>;
   resetToSampleData: () => void;
@@ -390,11 +401,14 @@ export const useVocaStore = create<VocaState>((set, get) => ({
       const storedUserRole = localStorage.getItem('vocat_user_role') as UserRole;
       const storedName = localStorage.getItem('vocat_user_name') || '';
       const initialRole = storedAccountRole || storedUserRole || get().accountRole || 'student';
+      const localUserId = getOrCreateUserId();
       set({
         isVerifiedWithInviteCode: isVerified,
         accountRole: initialRole,
         userRole: storedUserRole || initialRole,
-        userName: storedName || get().userName
+        userName: storedName || get().userName,
+        studentId: get().studentId || localUserId,
+        tutorId: get().tutorId || localUserId
       });
     }
 
@@ -637,10 +651,11 @@ export const useVocaStore = create<VocaState>((set, get) => ({
 
         // 1.8 Fetch study_logs and auto-mark attendance for today
         try {
-          const { data: logsData } = await client
-            .from('study_logs')
-            .select('*')
-            .order('study_date', { ascending: false });
+          let logsQuery = client.from('study_logs').select('*').order('study_date', { ascending: false });
+          if (get().userRole === 'student' && userId) {
+            logsQuery = logsQuery.or(`student_id.eq.${userId},student_id.is.null`);
+          }
+          const { data: logsData } = await logsQuery;
 
           if (logsData) {
             set({ studyLogs: logsData });
@@ -744,8 +759,16 @@ export const useVocaStore = create<VocaState>((set, get) => ({
             wordsMap[wb.id] = wData || [];
           }
 
-          const { data: qrData } = await client.from('quiz_results').select('*').order('created_at', { ascending: false });
-          const { data: incData } = await client.from('incorrect_notes').select('*, word:words(*)');
+          let qrQuery = client.from('quiz_results').select('*').order('created_at', { ascending: false });
+          let incQuery = client.from('incorrect_notes').select('*, word:words(*)');
+
+          if (get().userRole === 'student' && userId) {
+            qrQuery = qrQuery.or(`student_id.eq.${userId},student_id.is.null`);
+            incQuery = incQuery.or(`student_id.eq.${userId},student_id.is.null`);
+          }
+
+          const { data: qrData } = await qrQuery;
+          const { data: incData } = await incQuery;
 
           set({
             wordbooks: activeWbs,
@@ -1154,17 +1177,27 @@ export const useVocaStore = create<VocaState>((set, get) => ({
     }
   },
 
-  recordQuizResult: async (wordbookId, totalScore, maxScore, wrongWordIds) => {
+  recordQuizResult: async (wordbookId, totalScore, maxScore, wrongWordIds, partDetails) => {
     const wb = get().wordbooks.find(w => w.id === wordbookId);
+    let activeStudentId = get().studentId;
+    if (!activeStudentId || !isUuid(activeStudentId)) {
+      activeStudentId = getOrCreateUserId();
+      set({ studentId: activeStudentId });
+    }
+
     const newResult: QuizResult = {
       id: `qr-${Date.now()}`,
-      student_id: get().studentId,
+      student_id: activeStudentId,
       wordbook_id: wordbookId,
       total_score: totalScore,
       max_score: maxScore,
       created_at: new Date().toISOString(),
       wordbook_title: wb?.title,
-      wordbook_chapter: wb?.chapter
+      wordbook_chapter: wb?.chapter,
+      spelling_score: partDetails?.spellingScore,
+      spelling_max: partDetails?.spellingMax,
+      meaning_score: partDetails?.meaningScore,
+      meaning_max: partDetails?.meaningMax
     };
 
     // Update quiz results
@@ -1175,7 +1208,7 @@ export const useVocaStore = create<VocaState>((set, get) => ({
     const allWords = Object.values(get().words).flat();
 
     for (const item of wrongWordIds) {
-      const existingIdx = currentNotes.findIndex(n => n.word_id === item.wordId && n.student_id === get().studentId);
+      const existingIdx = currentNotes.findIndex(n => n.word_id === item.wordId && n.student_id === activeStudentId);
       const targetWord = allWords.find(w => w.id === item.wordId);
 
       if (existingIdx >= 0) {
@@ -1189,7 +1222,7 @@ export const useVocaStore = create<VocaState>((set, get) => ({
       } else {
         currentNotes.push({
           id: `inc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-          student_id: get().studentId,
+          student_id: activeStudentId,
           word_id: item.wordId,
           wrong_count: 1,
           last_wrong_answer: item.wrongAnswer,
@@ -1203,7 +1236,7 @@ export const useVocaStore = create<VocaState>((set, get) => ({
     set({ quizResults: updatedResults, incorrectNotes: currentNotes });
 
     const client = getSupabaseClient();
-    const dbStudentId = isUuid(get().studentId) ? get().studentId : null;
+    const dbStudentId = isUuid(activeStudentId) ? activeStudentId : null;
     const dbWordbookId = isUuid(wordbookId) ? wordbookId : null;
 
     if (client && dbWordbookId) {

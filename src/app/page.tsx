@@ -11,7 +11,7 @@ import { RoleSelectModal } from '@/components/RoleSelectModal';
 import { Layers, Users, GraduationCap, Loader2, BookOpen, FileSpreadsheet } from 'lucide-react';
 
 export default function Home() {
-  const { userEmail, accountRole, userRole, loadInitialData, isLoading, isVerifiedWithInviteCode, isStudentReportOpen, openStudentReport, closeStudentReport, userName } = useVocaStore();
+  const { userEmail, accountRole, userRole, loadInitialData, isLoading, isVerifiedWithInviteCode, isStudentReportOpen, openStudentReport, closeStudentReport, userName, studentId } = useVocaStore();
   const [tutorTab, setTutorTab] = useState<'wordbooks' | 'students'>('wordbooks');
 
   const isLoggedIn = Boolean(userEmail);
@@ -124,6 +124,7 @@ export default function Home() {
         isOpen={isStudentReportOpen}
         onClose={closeStudentReport}
         studentName={userName || '학생'}
+        studentId={studentId}
       />
 
       {/* Footer */}

@@ -22,43 +22,86 @@ interface StudentReportModalProps {
   isOpen: boolean;
   onClose: () => void;
   studentName?: string;
+  studentId?: string;
 }
 
 export const StudentReportModal: React.FC<StudentReportModalProps> = ({
   isOpen,
   onClose,
-  studentName = '김학생 (student_01)'
+  studentName,
+  studentId
 }) => {
-  const { quizResults, incorrectNotes, words, wordbooks, settings, studyLogs } = useVocaStore();
+  const {
+    quizResults,
+    incorrectNotes,
+    words,
+    studyLogs,
+    studentId: storeStudentId,
+    userName: storeUserName,
+    userEmail: storeUserEmail,
+    userRole
+  } = useVocaStore();
 
   const [aiFeedback, setAiFeedback] = useState<string>('');
   const [isAiLoading, setIsAiLoading] = useState<boolean>(false);
+  const [currentDateInfo, setCurrentDateInfo] = useState<{
+    todayStr: string;
+    sevenDaysAgoStr: string;
+    currentDateStr: string;
+  }>({
+    todayStr: '',
+    sevenDaysAgoStr: '',
+    currentDateStr: ''
+  });
 
-  useEffect(() => {
-    if (isOpen) {
-      fetchAiFeedback();
+  const activeStudentId = studentId || storeStudentId;
+  const isStudentRole = userRole === 'student';
+
+  const displayStudentName = studentName || storeUserName || (storeUserEmail ? storeUserEmail.split('@')[0] : '학생');
+  const displayStudentEmail = (!studentName || studentName === storeUserName) ? storeUserEmail : '';
+
+  // 1) Strictly filter quiz results for this student
+  const targetQuizResults = quizResults.filter(q => {
+    if (activeStudentId) {
+      if (q.student_id === activeStudentId) return true;
+      if (!q.student_id && isStudentRole) return true;
+      return false;
     }
-  }, [isOpen]);
+    return true;
+  });
 
-  if (!isOpen) return null;
+  // 2) Strictly filter incorrect notes for this student
+  const targetIncorrectNotes = incorrectNotes.filter(n => {
+    if (activeStudentId) {
+      if (n.student_id === activeStudentId) return true;
+      if (!n.student_id && isStudentRole) return true;
+      return false;
+    }
+    return true;
+  });
 
-  // Flatten all registered words
-  const allWordsList = Object.values(words).flat();
+  // 3) Strictly filter study logs for this student
+  const targetStudyLogs = studyLogs.filter(l => {
+    if (activeStudentId) {
+      if (l.student_id === activeStudentId) return true;
+      if (!l.student_id && isStudentRole) return true;
+      return false;
+    }
+    return true;
+  });
 
-  // 1) Overview calculations
-  const totalQuizzes = quizResults.length;
-  
+  // Overview calculations
+  const totalQuizzes = targetQuizResults.length;
+
   // Recent 7 days calculation for Attendance & Study Time
-  const todayStr = new Date().toISOString().split('T')[0];
-  const sevenDaysAgoDate = new Date();
-  sevenDaysAgoDate.setDate(sevenDaysAgoDate.getDate() - 6);
-  const sevenDaysAgoStr = sevenDaysAgoDate.toISOString().split('T')[0];
+  const todayStr = currentDateInfo.todayStr;
+  const sevenDaysAgoStr = currentDateInfo.sevenDaysAgoStr;
+  const currentDateStr = currentDateInfo.currentDateStr;
 
-  const studentLogs = studyLogs.filter(l => l.student_id || true); // student study logs
-  const todayLog = studentLogs.find(l => l.study_date === todayStr);
+  const todayLog = targetStudyLogs.find(l => l.study_date === todayStr);
   const todaySeconds = todayLog?.duration_seconds || 0;
 
-  const thisWeekLogs = studentLogs.filter(l => l.study_date >= sevenDaysAgoStr && l.study_date <= todayStr);
+  const thisWeekLogs = targetStudyLogs.filter(l => l.study_date >= sevenDaysAgoStr && l.study_date <= todayStr);
   const attendanceDaysThisWeek = new Set(thisWeekLogs.map(l => l.study_date)).size;
   const weeklyTotalSeconds = thisWeekLogs.reduce((acc, l) => acc + (l.duration_seconds || 0), 0);
 
@@ -77,32 +120,94 @@ export const StudentReportModal: React.FC<StudentReportModalProps> = ({
   const todayStudyTimeText = formatDuration(todaySeconds);
   const weeklyStudyTimeText = formatDuration(weeklyTotalSeconds);
 
-  // Average score %
+  // Average score % across this student's actual quizzes
   const avgScorePct = totalQuizzes > 0
     ? Math.round(
-        quizResults.reduce((acc, q) => acc + (q.total_score / (q.max_score || 1)) * 100, 0) / totalQuizzes
+        targetQuizResults.reduce((acc, q) => acc + (q.total_score / (q.max_score || 1)) * 100, 0) / totalQuizzes
       )
     : 0;
 
-  // Word mastery rate (Words with no active unresolved wrong notes)
-  const unresolvedWrongWordIds = new Set(incorrectNotes.filter(n => !n.is_resolved).map(n => n.word_id));
-  const masteredWordsCount = allWordsList.filter(w => !unresolvedWrongWordIds.has(w.id)).length;
-  const masteryPct = allWordsList.length > 0
-    ? Math.round((masteredWordsCount / allWordsList.length) * 100)
-    : 100;
+  // Flatten registered words
+  const allWordsList = Object.values(words).flat();
 
-  // 2) Part-wise & POS Breakdown
-  const spellingPriorityWords = allWordsList.filter(w => w.is_spelling_priority);
-  const spellingWrongCount = spellingPriorityWords.filter(w => unresolvedWrongWordIds.has(w.id)).length;
-  const spellingAccuracyPct = spellingPriorityWords.length > 0
-    ? Math.max(0, Math.round(100 - (spellingWrongCount / spellingPriorityWords.length) * 100))
-    : 85;
+  // Words tested in quizzes taken by the student
+  const testedWordbookIds = new Set(targetQuizResults.map(q => q.wordbook_id));
+  const testedWords = testedWordbookIds.size > 0
+    ? allWordsList.filter(w => testedWordbookIds.has(w.wordbook_id))
+    : allWordsList;
 
-  const nonSpellingWords = allWordsList.filter(w => !w.is_spelling_priority);
-  const nonSpellingWrongCount = nonSpellingWords.filter(w => unresolvedWrongWordIds.has(w.id)).length;
-  const meaningAccuracyPct = nonSpellingWords.length > 0
-    ? Math.max(0, Math.round(100 - (nonSpellingWrongCount / nonSpellingWords.length) * 100))
-    : 90;
+  // Word mastery rate (Tested words with no active unresolved wrong notes)
+  const unresolvedWrongWordIds = new Set(targetIncorrectNotes.filter(n => !n.is_resolved).map(n => n.word_id));
+  const totalWordsInScope = testedWords.length;
+  const unresolvedWrongCountInScope = testedWords.filter(w => unresolvedWrongWordIds.has(w.id)).length;
+  const masteredWordsCount = Math.max(0, totalWordsInScope - unresolvedWrongCountInScope);
+  const masteryPct = totalQuizzes > 0 && totalWordsInScope > 0
+    ? Math.round((masteredWordsCount / totalWordsInScope) * 100)
+    : 0;
+
+  // 2) Part 1 (Spelling) vs Part 2 (Meaning) Accuracy Calculation
+  let detailedSpellingScore = 0;
+  let detailedSpellingMax = 0;
+  let detailedMeaningScore = 0;
+  let detailedMeaningMax = 0;
+  let hasRecordedPartScores = false;
+
+  targetQuizResults.forEach(q => {
+    if (q.spelling_max && q.spelling_max > 0) {
+      detailedSpellingScore += q.spelling_score || 0;
+      detailedSpellingMax += q.spelling_max;
+      detailedMeaningScore += q.meaning_score || 0;
+      detailedMeaningMax += q.meaning_max || 0;
+      hasRecordedPartScores = true;
+    }
+  });
+
+  let spellingAccuracyPct = 0;
+  let meaningAccuracyPct = 0;
+
+  if (hasRecordedPartScores && detailedSpellingMax > 0 && detailedMeaningMax > 0) {
+    spellingAccuracyPct = Math.round((detailedSpellingScore / detailedSpellingMax) * 100);
+    meaningAccuracyPct = Math.round((detailedMeaningScore / detailedMeaningMax) * 100);
+  } else if (totalQuizzes > 0) {
+    const totalQuestionsTested = targetQuizResults.reduce((sum, q) => sum + (q.max_score || 0), 0);
+    const totalCorrect = targetQuizResults.reduce((sum, q) => sum + (q.total_score || 0), 0);
+    const totalWrong = Math.max(0, totalQuestionsTested - totalCorrect);
+
+    let spellingWrongWeight = 0;
+    let meaningWrongWeight = 0;
+
+    targetIncorrectNotes.forEach(note => {
+      const w = note.word || allWordsList.find(item => item.id === note.word_id);
+      const count = note.wrong_count || 1;
+      if (w?.is_spelling_priority) {
+        spellingWrongWeight += count;
+      } else {
+        meaningWrongWeight += count;
+      }
+    });
+
+    const totalSpellingQuestions = Math.round(totalQuestionsTested * 0.4);
+    const totalMeaningQuestions = Math.max(1, totalQuestionsTested - totalSpellingQuestions);
+
+    if (totalWrong === 0) {
+      spellingAccuracyPct = 100;
+      meaningAccuracyPct = 100;
+    } else if (spellingWrongWeight + meaningWrongWeight > 0) {
+      const ratio = spellingWrongWeight / (spellingWrongWeight + meaningWrongWeight);
+      const estSpellingWrong = Math.min(totalSpellingQuestions, Math.round(totalWrong * ratio));
+      const estMeaningWrong = Math.min(totalMeaningQuestions, Math.max(0, totalWrong - estSpellingWrong));
+
+      spellingAccuracyPct = totalSpellingQuestions > 0
+        ? Math.max(0, Math.round(((totalSpellingQuestions - estSpellingWrong) / totalSpellingQuestions) * 100))
+        : avgScorePct;
+      meaningAccuracyPct = totalMeaningQuestions > 0
+        ? Math.max(0, Math.round(((totalMeaningQuestions - estMeaningWrong) / totalMeaningQuestions) * 100))
+        : avgScorePct;
+    } else {
+      spellingAccuracyPct = avgScorePct;
+      meaningAccuracyPct = avgScorePct;
+    }
+  }
 
   // POS Weakness Distribution
   const posCounts: Record<string, number> = {
@@ -113,7 +218,7 @@ export const StudentReportModal: React.FC<StudentReportModalProps> = ({
     기타: 0
   };
 
-  incorrectNotes.forEach(note => {
+  targetIncorrectNotes.forEach(note => {
     const w = note.word || allWordsList.find(item => item.id === note.word_id);
     const posStr = (w?.pos || '').toLowerCase();
 
@@ -132,8 +237,8 @@ export const StudentReportModal: React.FC<StudentReportModalProps> = ({
     .sort(([_, a], [__, b]) => b - a)
     .map(([pos]) => pos);
 
-  // 3) High-priority wrong words (wrong_count >= 2 or top wrong words)
-  const hydratedNotes = incorrectNotes.map(n => ({
+  // 3) High-priority wrong words
+  const hydratedNotes = targetIncorrectNotes.map(n => ({
     ...n,
     word: n.word || allWordsList.find(w => w.id === n.word_id)
   })).filter(n => n.word !== undefined);
@@ -144,10 +249,15 @@ export const StudentReportModal: React.FC<StudentReportModalProps> = ({
 
   // 4) Gemini AI Coaching Feedback Generation
   const fetchAiFeedback = async () => {
+    if (totalQuizzes === 0) {
+      setAiFeedback('아직 시험 응시 기록이 없습니다. 단어 학습 후 챕터별 시험을 치르면 AI 튜터가 세부 영역별(스펠링 인출 및 4지선다 의미 파악) 강약점과 맞춤 학습 처방을 분석해 드립니다.');
+      return;
+    }
+
     setIsAiLoading(true);
     try {
       const result = await generateStudentEvaluationFeedback({
-        studentName,
+        studentName: displayStudentName,
         totalQuizzes,
         avgScorePct,
         masteryPct,
@@ -169,15 +279,32 @@ export const StudentReportModal: React.FC<StudentReportModalProps> = ({
     }
   };
 
+  useEffect(() => {
+    if (isOpen) {
+      const now = new Date();
+      const today = now.toISOString().split('T')[0];
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+      const sevenDays = sevenDaysAgo.toISOString().split('T')[0];
+      const dateFormatted = now.toLocaleDateString('ko-KR', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      });
+      setCurrentDateInfo({
+        todayStr: today,
+        sevenDaysAgoStr: sevenDays,
+        currentDateStr: dateFormatted
+      });
+      fetchAiFeedback();
+    }
+  }, [isOpen, activeStudentId, totalQuizzes, avgScorePct]);
+
+  if (!isOpen) return null;
+
   const handlePrint = () => {
     window.print();
   };
-
-  const currentDateStr = new Date().toLocaleDateString('ko-KR', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
-  });
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-in fade-in duration-200 print:p-0 print:static print:bg-white">
@@ -234,7 +361,10 @@ export const StudentReportModal: React.FC<StudentReportModalProps> = ({
               </div>
 
               <div className="text-right space-y-1 bg-slate-50 p-3 rounded-2xl border border-slate-200 text-xs text-slate-700">
-                <p><strong>학생명:</strong> <span className="font-bold text-slate-900">{studentName}</span></p>
+                <p><strong>학생명:</strong> <span className="font-bold text-slate-900">{displayStudentName}</span></p>
+                {displayStudentEmail && (
+                  <p><strong>계정:</strong> <span className="text-slate-600 font-mono text-[11px]">{displayStudentEmail}</span></p>
+                )}
                 <p><strong>담당 튜터:</strong> SensorSsam</p>
                 <p><strong>발행일자:</strong> {currentDateStr}</p>
               </div>
@@ -293,7 +423,9 @@ export const StudentReportModal: React.FC<StudentReportModalProps> = ({
                   {masteryPct}%
                 </div>
                 <p className="text-[11px] text-slate-500">
-                  전체 {allWordsList.length}개 중 {masteredWordsCount}개 완전 마스터
+                  {totalQuizzes > 0
+                    ? `응시 단어 ${totalWordsInScope}개 중 ${masteredWordsCount}개 완전 마스터`
+                    : '시험 미응시'}
                 </p>
               </div>
             </div>

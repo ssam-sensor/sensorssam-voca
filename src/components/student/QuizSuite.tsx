@@ -196,11 +196,24 @@ export const QuizSuite: React.FC<QuizSuiteProps> = ({ wordbook, words, onFinish,
       setAiEvalResult(null);
     } else {
       // Quiz Completed!
+      const part1Questions = quizQuestions.filter(q => q.type === 'spelling');
+      const part2Questions = quizQuestions.filter(q => q.type === 'meaning');
+      const part1WrongCount = latestWrongList.filter(item => part1Questions.some(q => q.word.id === item.wordId)).length;
+      const part2WrongCount = latestWrongList.filter(item => part2Questions.some(q => q.word.id === item.wordId)).length;
+      const part1Score = Math.max(0, part1Questions.length - part1WrongCount);
+      const part2Score = Math.max(0, part2Questions.length - part2WrongCount);
+
       recordQuizResult(
         wordbook.id,
         latestScore,
         quizQuestions.length,
-        latestWrongList
+        latestWrongList,
+        {
+          spellingScore: part1Score,
+          spellingMax: part1Questions.length,
+          meaningScore: part2Score,
+          meaningMax: part2Questions.length
+        }
       );
       setStage('result');
       

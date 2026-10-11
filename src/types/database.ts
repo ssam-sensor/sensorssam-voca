@@ -51,6 +51,10 @@ export interface QuizResult {
   created_at: string;
   wordbook_title?: string;
   wordbook_chapter?: string;
+  spelling_score?: number;
+  spelling_max?: number;
+  meaning_score?: number;
+  meaning_max?: number;
 }
 
 export interface IncorrectNote {

@@ -34,10 +34,21 @@ export const StudentManager: React.FC = () => {
     l => l.student_id === activeStudent?.id || !l.student_id || selectedStudentId === 'sample-student-01'
   );
 
-  const todayStr = new Date().toISOString().split('T')[0];
-  const sevenDaysAgoDate = new Date();
-  sevenDaysAgoDate.setDate(sevenDaysAgoDate.getDate() - 6);
-  const sevenDaysAgoStr = sevenDaysAgoDate.toISOString().split('T')[0];
+  const [dates, setDates] = useState({ todayStr: '', sevenDaysAgoStr: '' });
+
+  useEffect(() => {
+    const now = new Date();
+    const today = now.toISOString().split('T')[0];
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+    setDates({
+      todayStr: today,
+      sevenDaysAgoStr: sevenDaysAgo.toISOString().split('T')[0]
+    });
+  }, []);
+
+  const todayStr = dates.todayStr;
+  const sevenDaysAgoStr = dates.sevenDaysAgoStr;
 
   const todayLog = studentLogs.find(l => l.study_date === todayStr);
   const todaySeconds = todayLog?.duration_seconds || 0;
@@ -233,6 +244,7 @@ export const StudentManager: React.FC = () => {
         isOpen={isReportOpen}
         onClose={() => setIsReportOpen(false)}
         studentName={selectedStudentName}
+        studentId={activeStudent?.id}
       />
     </div>
   );
