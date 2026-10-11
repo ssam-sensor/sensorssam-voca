@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import confetti from 'canvas-confetti';
 import { Word, Wordbook } from '@/types/database';
 import { useVocaStore } from '@/store/useVocaStore';
@@ -19,12 +19,73 @@ interface QuizSuiteProps {
 interface QuizQuestionItem {
   word: Word;
   type: 'spelling' | 'meaning' | 'ai_meaning';
+  options?: string[];
+  answerIndex?: number;
+}
+
+function shuffleArray<T>(array: T[]): T[] {
+  const result = [...array];
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
+}
+
+function buildQuestions(words: Word[], mode: 'standard' | 'ai'): QuizQuestionItem[] {
+  if (!words || words.length === 0) return [];
+  const totalCount = words.length;
+
+  if (mode === 'ai') {
+    const targetCount = Math.max(1, Math.round(totalCount / 3));
+    const sortedByDifficulty = [...words].sort((a, b) => {
+      if (a.is_spelling_priority !== b.is_spelling_priority) {
+        return a.is_spelling_priority ? -1 : 1;
+      }
+      if (a.is_idiom !== b.is_idiom) {
+        return a.is_idiom ? -1 : 1;
+      }
+      return b.word.length - a.word.length;
+    });
+
+    const selectedAiWords = sortedByDifficulty.slice(0, targetCount);
+    return selectedAiWords.map(w => ({ word: w, type: 'ai_meaning' as const }));
+  }
+
+  // Standard mode: Part 1 (~40% spelling) & Part 2 (~60% meaning)
+  const part1Count = Math.min(totalCount, Math.max(0, Math.round(totalCount * 0.4)));
+  const sortedWords = [...words].sort((a, b) => {
+    if (a.is_spelling_priority === b.is_spelling_priority) return 0;
+    return a.is_spelling_priority ? -1 : 1;
+  });
+
+  const part1Words = sortedWords.slice(0, part1Count);
+  const part2Words = sortedWords.slice(part1Count);
+
+  return [
+    ...part1Words.map(w => ({ word: w, type: 'spelling' as const })),
+    ...part2Words.map(w => {
+      const uniqueDistractors = Array.from(
+        new Set(words.map(item => item.meaning).filter(m => m !== w.meaning))
+      );
+      const shuffledDistractors = shuffleArray(uniqueDistractors).slice(0, 3);
+      const options = shuffleArray([w.meaning, ...shuffledDistractors]);
+      const answerIndex = options.indexOf(w.meaning);
+      return {
+        word: w,
+        type: 'meaning' as const,
+        options,
+        answerIndex
+      };
+    })
+  ];
 }
 
 export const QuizSuite: React.FC<QuizSuiteProps> = ({ wordbook, words, onFinish, mode = 'standard' }) => {
   const { recordQuizResult } = useVocaStore();
 
   const [stage, setStage] = useState<'intro' | 'quiz' | 'result'>('intro');
+  const [quizSeed, setQuizSeed] = useState(0);
 
   // Track active study duration while taking quiz
   useStudyTimer(stage === 'quiz');
@@ -43,60 +104,44 @@ export const QuizSuite: React.FC<QuizSuiteProps> = ({ wordbook, words, onFinish,
   const [score, setScore] = useState(0);
   const [wrongList, setWrongList] = useState<{ wordId: string; wrongAnswer: string }[]>([]);
 
-  // Selection Logic:
-  // Standard mode: 100% of chapter words
-  // AI mode: Top 1/3 difficult words (is_spelling_priority -> is_idiom -> length)
   const totalCount = words.length;
 
-  const buildQuestions = (): QuizQuestionItem[] => {
-    if (mode === 'ai') {
-      const targetCount = Math.max(1, Math.round(totalCount / 3));
-      const sortedByDifficulty = [...words].sort((a, b) => {
-        if (a.is_spelling_priority !== b.is_spelling_priority) {
-          return a.is_spelling_priority ? -1 : 1;
-        }
-        if (a.is_idiom !== b.is_idiom) {
-          return a.is_idiom ? -1 : 1;
-        }
-        return b.word.length - a.word.length;
-      });
+  // Memoize questions and multiple choice options so they stay stable during quiz attempts
+  const quizQuestions = useMemo(() => {
+    return buildQuestions(words, mode);
+  }, [words, mode, quizSeed]);
 
-      const selectedAiWords = sortedByDifficulty.slice(0, targetCount);
-      return selectedAiWords.map(w => ({ word: w, type: 'ai_meaning' as const }));
-    }
-
-    // Standard mode: Part 1 (~40% spelling) & Part 2 (~60% meaning)
-    const part1Count = Math.min(totalCount, Math.max(0, Math.round(totalCount * 0.4)));
-    const sortedWords = [...words].sort((a, b) => {
-      if (a.is_spelling_priority === b.is_spelling_priority) return 0;
-      return a.is_spelling_priority ? -1 : 1;
-    });
-
-    const part1Words = sortedWords.slice(0, part1Count);
-    const part2Words = sortedWords.slice(part1Count);
-
-    return [
-      ...part1Words.map(w => ({ word: w, type: 'spelling' as const })),
-      ...part2Words.map(w => ({ word: w, type: 'meaning' as const }))
-    ];
-  };
-
-  const quizQuestions: QuizQuestionItem[] = buildQuestions();
   const currentQuestion = quizQuestions[currentStep] || quizQuestions[0];
   const targetWord = currentQuestion?.word;
 
-  // Build 4 multiple choice options for Standard Part 2
-  const buildOptionsForMeaning = (target: Word) => {
-    const meanings = words.map(w => w.meaning);
-    const distractors = meanings.filter(m => m !== target.meaning);
-    const shuffled = distractors.sort(() => 0.5 - Math.random()).slice(0, 3);
-    const options = [target.meaning, ...shuffled].sort(() => 0.5 - Math.random());
-    return { options, answerIndex: options.indexOf(target.meaning) };
-  };
+  const transitionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const spellingInputRef = useRef<HTMLInputElement>(null);
+  const aiMeaningInputRef = useRef<HTMLInputElement>(null);
 
-  const currentOptions = targetWord && mode === 'standard' ? buildOptionsForMeaning(targetWord) : { options: [], answerIndex: 0 };
+  useEffect(() => {
+    return () => {
+      if (transitionTimeoutRef.current) {
+        clearTimeout(transitionTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Auto focus input whenever currentStep changes or quiz stage begins
+  useEffect(() => {
+    if (stage === 'quiz') {
+      const timer = setTimeout(() => {
+        if (currentQuestion?.type === 'spelling') {
+          spellingInputRef.current?.focus();
+        } else if (currentQuestion?.type === 'ai_meaning' && !aiEvalResult) {
+          aiMeaningInputRef.current?.focus();
+        }
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [currentStep, stage, currentQuestion?.type, aiEvalResult]);
 
   const handleStartQuiz = () => {
+    setQuizSeed(prev => prev + 1);
     setStage('quiz');
     setCurrentStep(0);
     setScore(0);
@@ -109,6 +154,9 @@ export const QuizSuite: React.FC<QuizSuiteProps> = ({ wordbook, words, onFinish,
 
   const handleAbortQuiz = () => {
     if (confirm("시험을 중단하고 홈 화면으로 이동하시겠습니까? 진행 중인 시험 결과는 저장되지 않습니다.")) {
+      if (transitionTimeoutRef.current) {
+        clearTimeout(transitionTimeoutRef.current);
+      }
       onFinish();
     }
   };
@@ -173,6 +221,20 @@ export const QuizSuite: React.FC<QuizSuiteProps> = ({ wordbook, words, onFinish,
 
     handleNextQuestion(updatedWrongList, updatedScore);
   };
+
+  if (quizQuestions.length === 0 || !targetWord) {
+    return (
+      <div className="max-w-md mx-auto bg-white border border-slate-200 rounded-3xl p-8 text-center space-y-4 shadow-lg">
+        <p className="text-sm font-bold text-slate-700">단어가 없어 시험을 진행할 수 없습니다.</p>
+        <button
+          onClick={onFinish}
+          className="px-5 py-2.5 rounded-xl bg-blue-600 text-white font-bold text-xs hover:bg-blue-700 transition-colors"
+        >
+          돌아가기
+        </button>
+      </div>
+    );
+  }
 
   // 1. INTRO SCREEN
   if (stage === 'intro') {
@@ -384,6 +446,8 @@ export const QuizSuite: React.FC<QuizSuiteProps> = ({ wordbook, words, onFinish,
                 한글 뜻을 직접 입력하세요 (동의어/유의어 인정)
               </label>
               <input
+                ref={aiMeaningInputRef}
+                key={`ai-input-${currentStep}`}
                 type="text"
                 autoFocus
                 disabled={Boolean(aiEvalResult) || isAiGrading}
@@ -485,6 +549,8 @@ export const QuizSuite: React.FC<QuizSuiteProps> = ({ wordbook, words, onFinish,
                   className="space-y-3 sm:space-y-4 pt-1"
                 >
                   <input
+                    ref={spellingInputRef}
+                    key={`spelling-input-${currentStep}`}
                     type="text"
                     autoFocus
                     value={userInputSpelling}
@@ -516,26 +582,37 @@ export const QuizSuite: React.FC<QuizSuiteProps> = ({ wordbook, words, onFinish,
                 </div>
 
                 <div className="grid grid-cols-1 gap-2.5 sm:gap-3">
-                  {currentOptions.options.map((option, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => {
-                        setSelectedOption(idx);
-                        const isCorrect = idx === currentOptions.answerIndex;
-                        setTimeout(() => handleStandardAnswerSubmit(option, isCorrect), 300);
-                      }}
-                      className={`p-3.5 sm:p-4 rounded-2xl border text-left text-xs sm:text-sm font-bold transition-all flex items-center justify-between min-h-[48px] ${
-                        selectedOption === idx
-                          ? idx === currentOptions.answerIndex
-                            ? 'bg-emerald-50 border-emerald-500 text-emerald-800'
-                            : 'bg-rose-50 border-rose-500 text-rose-800'
-                          : 'bg-white border-slate-200 hover:border-blue-400 text-slate-800 shadow-xs'
-                      }`}
-                    >
-                      <span className="leading-snug">{idx + 1}. {option}</span>
-                      <ChevronRight className="w-4 h-4 text-slate-400 shrink-0 ml-2" />
-                    </button>
-                  ))}
+                  {(currentQuestion.options || []).map((option, idx) => {
+                    const isSelected = selectedOption === idx;
+                    const isCorrectAnswer = idx === currentQuestion.answerIndex;
+
+                    return (
+                      <button
+                        key={idx}
+                        disabled={selectedOption !== null}
+                        onClick={() => {
+                          if (selectedOption !== null) return;
+                          setSelectedOption(idx);
+                          const isCorrect = idx === currentQuestion.answerIndex;
+                          transitionTimeoutRef.current = setTimeout(() => {
+                            handleStandardAnswerSubmit(option, isCorrect);
+                          }, 300);
+                        }}
+                        className={`p-3.5 sm:p-4 rounded-2xl border text-left text-xs sm:text-sm font-bold transition-all flex items-center justify-between min-h-[48px] ${
+                          isSelected
+                            ? isCorrectAnswer
+                              ? 'bg-emerald-50 border-emerald-500 text-emerald-800'
+                              : 'bg-rose-50 border-rose-500 text-rose-800'
+                            : selectedOption !== null
+                              ? 'bg-white border-slate-200 text-slate-400 opacity-60 cursor-not-allowed'
+                              : 'bg-white border-slate-200 hover:border-blue-400 text-slate-800 shadow-xs'
+                        }`}
+                      >
+                        <span className="leading-snug">{idx + 1}. {option}</span>
+                        <ChevronRight className="w-4 h-4 text-slate-400 shrink-0 ml-2" />
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}
