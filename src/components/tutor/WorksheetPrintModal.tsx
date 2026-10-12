@@ -51,7 +51,7 @@ export const WorksheetPrintModal: React.FC<WorksheetPrintModalProps> = ({
       <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-4xl shadow-2xl overflow-hidden text-slate-800 flex flex-col max-h-[90vh] print:max-h-none print:shadow-none print:border-none print:bg-white print:text-black print:w-full print:m-0 print:overflow-visible print:block print:rounded-none">
         
         {/* Header - Screen only */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50 print:hidden">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50 print:hidden print-hidden no-print">
           <div className="flex items-center gap-2">
             <Printer className="w-5 h-5 text-blue-600" />
             <div>
@@ -68,7 +68,7 @@ export const WorksheetPrintModal: React.FC<WorksheetPrintModalProps> = ({
         </div>
 
         {/* Print Options Pill Bar - Screen only */}
-        <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between print:hidden">
+        <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between print:hidden print-hidden no-print">
           <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
             <button
               onClick={() => setMode('study')}

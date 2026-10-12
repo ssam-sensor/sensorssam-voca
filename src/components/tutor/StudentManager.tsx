@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useVocaStore } from '@/store/useVocaStore';
+import { SAMPLE_WORDBOOKS } from '@/lib/sample-data';
 import { StudentReportModal } from '@/components/tutor/StudentReportModal';
 import { Users, Award, BookOpen, AlertTriangle, FileSpreadsheet, UserCheck, ChevronRight, CheckCircle2 } from 'lucide-react';
 
@@ -18,9 +19,13 @@ export const StudentManager: React.FC = () => {
       return { title: '오답 집중 재시험', chapter: 'REVIEW', tutor_name: null };
     }
     const targetId = wordbookId.trim().toLowerCase();
-    return (
-      (allWordbooks || []).find(w => (w.id || '').trim().toLowerCase() === targetId) ||
-      (wordbooks || []).find(w => (w.id || '').trim().toLowerCase() === targetId)
+    const candidateList = [
+      ...(allWordbooks || []),
+      ...(wordbooks || []),
+      ...(SAMPLE_WORDBOOKS || [])
+    ];
+    return candidateList.find(
+      w => (w.id || '').trim().toLowerCase() === targetId || (w.title || '').trim().toLowerCase() === targetId
     );
   };
 
@@ -212,7 +217,11 @@ export const StudentManager: React.FC = () => {
             {studentQuizResults.map((result) => {
               const scorePct = Math.round((result.total_score / (result.max_score || 1)) * 100);
               const matchedWb = getWordbookInfo(result.wordbook_id);
-              const wordbookTitle = matchedWb?.title || result.wordbook_title || (result.wordbook_id === 'wb-custom-wrong' ? '오답 집중 재시험' : '단어장');
+              const isIdUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(result.wordbook_id || '');
+              const fallbackTitle = (result.wordbook_id && !isIdUuid && !result.wordbook_id.startsWith('wb-'))
+                ? result.wordbook_id
+                : '지정 단어장';
+              const wordbookTitle = matchedWb?.title || result.wordbook_title || (result.wordbook_id === 'wb-custom-wrong' ? '오답 집중 재시험' : fallbackTitle);
               const wordbookChapter = matchedWb?.chapter || result.wordbook_chapter || (result.wordbook_id === 'wb-custom-wrong' ? 'REVIEW' : '');
 
               return (

@@ -402,7 +402,7 @@ export const StudentReportModal: React.FC<StudentReportModalProps> = ({
       <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-4xl shadow-2xl overflow-hidden text-slate-800 flex flex-col max-h-[92vh] print:max-h-none print:shadow-none print:border-none print:w-full print:rounded-none">
         
         {/* Modal Header & Action Buttons - Hidden in Print */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50 print:hidden">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50 print:hidden print-hidden no-print">
           <div className="flex items-center gap-2.5">
             <div className="p-2 rounded-xl bg-blue-50 text-blue-600 border border-blue-200">
               <FileSpreadsheet className="w-5 h-5" />

@@ -31,7 +31,7 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-800 flex flex-col selection:bg-blue-500 selection:text-white">
+    <div id="app-main-layout" className="min-h-screen bg-slate-100 text-slate-800 flex flex-col selection:bg-blue-500 selection:text-white">
       <Navbar />
 
       {/* Invite Code & Google Authentication Modal */}

@@ -771,9 +771,11 @@ export const useVocaStore = create<VocaState>((set, get) => ({
           const { data: incData } = await incQuery;
 
           // Enrich quiz results with wordbook metadata using wordbook_id
-          const wbMap = new Map((rawWbs || []).map(w => [w.id, w]));
+          const allWbCandidates = [...(rawWbs || []), ...SAMPLE_WORDBOOKS];
+          const wbMap = new Map(allWbCandidates.map(w => [(w.id || '').toLowerCase(), w]));
           const enrichedQrData: QuizResult[] = (qrData || []).map(qr => {
-            const matchedWb = wbMap.get(qr.wordbook_id);
+            const targetId = (qr.wordbook_id || '').toLowerCase();
+            const matchedWb = wbMap.get(targetId) || allWbCandidates.find(w => (w.title || '').toLowerCase() === targetId);
             const customTitle = qr.wordbook_id === 'wb-custom-wrong' ? '오답 집중 재시험' : undefined;
             const customChapter = qr.wordbook_id === 'wb-custom-wrong' ? 'REVIEW' : undefined;
             return {
@@ -1192,7 +1194,10 @@ export const useVocaStore = create<VocaState>((set, get) => ({
   },
 
   recordQuizResult: async (wordbookId, totalScore, maxScore, wrongWordIds, partDetails) => {
-    const wb = get().wordbooks.find(w => w.id === wordbookId) || get().allWordbooks.find(w => w.id === wordbookId);
+    const targetId = (wordbookId || '').trim().toLowerCase();
+    const wb = get().wordbooks.find(w => (w.id || '').trim().toLowerCase() === targetId || (w.title || '').trim().toLowerCase() === targetId) ||
+      get().allWordbooks.find(w => (w.id || '').trim().toLowerCase() === targetId || (w.title || '').trim().toLowerCase() === targetId) ||
+      SAMPLE_WORDBOOKS.find(w => (w.id || '').trim().toLowerCase() === targetId || (w.title || '').trim().toLowerCase() === targetId);
     let activeStudentId = get().studentId;
     if (!activeStudentId || !isUuid(activeStudentId)) {
       activeStudentId = getOrCreateUserId();

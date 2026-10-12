@@ -76,11 +76,14 @@ body {
   aside,
   footer,
   .print-hidden,
-  .print\:hidden {
+  .print\:hidden,
+  .no-print {
     display: none !important;
   }
 
-  /* When print modal is open, completely hide the background app */
+  /* When print modal is open, completely hide the background app layout */
+  body.print-modal-open #app-main-layout,
+  body:has(#print-modal-root) #app-main-layout,
   body.print-modal-open > *:not(#print-modal-root),
   body:has(#print-modal-root) > *:not(#print-modal-root) {
     display: none !important;
@@ -102,6 +105,7 @@ body {
 
   #print-modal-root {
     display: block !important;
+    visibility: visible !important;
     position: static !important;
     width: 100% !important;
     max-width: 100% !important;
