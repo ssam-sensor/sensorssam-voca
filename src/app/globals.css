@@ -58,3 +58,68 @@ body {
   -ms-overflow-style: none;  /* IE and Edge */
   scrollbar-width: none;  /* Firefox */
 }
+
+/* Print Media Styles for Clean Worksheet & Report Output */
+@media print {
+  @page {
+    margin: 10mm 12mm 12mm 12mm;
+    size: auto;
+  }
+
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  nav,
+  header,
+  aside,
+  footer,
+  .print-hidden,
+  .print\:hidden {
+    display: none !important;
+  }
+
+  /* When print modal is open, completely hide the background app */
+  body.print-modal-open > *:not(#print-modal-root),
+  body:has(#print-modal-root) > *:not(#print-modal-root) {
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    max-height: 0 !important;
+    overflow: hidden !important;
+  }
+
+  body.print-modal-open,
+  body:has(#print-modal-root) {
+    background: #ffffff !important;
+    color: #000000 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    min-height: auto !important;
+  }
+
+  #print-modal-root {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    box-shadow: none !important;
+    border: none !important;
+    overflow: visible !important;
+  }
+
+  #print-modal-root tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  #print-modal-root thead {
+    display: table-header-group;
+  }
+}

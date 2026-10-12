@@ -770,10 +770,23 @@ export const useVocaStore = create<VocaState>((set, get) => ({
           const { data: qrData } = await qrQuery;
           const { data: incData } = await incQuery;
 
+          // Enrich quiz results with wordbook metadata using wordbook_id
+          const wbMap = new Map((rawWbs || []).map(w => [w.id, w]));
+          const enrichedQrData: QuizResult[] = (qrData || []).map(qr => {
+            const matchedWb = wbMap.get(qr.wordbook_id);
+            const customTitle = qr.wordbook_id === 'wb-custom-wrong' ? '오답 집중 재시험' : undefined;
+            const customChapter = qr.wordbook_id === 'wb-custom-wrong' ? 'REVIEW' : undefined;
+            return {
+              ...qr,
+              wordbook_title: matchedWb?.title || qr.wordbook_title || customTitle,
+              wordbook_chapter: matchedWb?.chapter || qr.wordbook_chapter || customChapter,
+            };
+          });
+
           set({
             wordbooks: activeWbs,
             words: wordsMap,
-            quizResults: qrData || [],
+            quizResults: enrichedQrData,
             incorrectNotes: incData || [],
             activeWordbookId: activeWbs[0]?.id || null,
             isLoading: false
@@ -1075,11 +1088,12 @@ export const useVocaStore = create<VocaState>((set, get) => ({
     }
 
     const updatedWbs = get().wordbooks.filter(wb => wb.id !== wordbookId);
+    const updatedAllWbs = get().allWordbooks.filter(wb => wb.id !== wordbookId);
     const updatedWords = { ...get().words };
     delete updatedWords[wordbookId];
 
     const nextActive = updatedWbs.length > 0 ? updatedWbs[0].id : null;
-    set({ wordbooks: updatedWbs, words: updatedWords, activeWordbookId: nextActive });
+    set({ wordbooks: updatedWbs, allWordbooks: updatedAllWbs, words: updatedWords, activeWordbookId: nextActive });
 
     if (typeof window !== 'undefined') {
       localStorage.setItem(getWbKey(currentTutorId), JSON.stringify(updatedWbs));
@@ -1178,12 +1192,15 @@ export const useVocaStore = create<VocaState>((set, get) => ({
   },
 
   recordQuizResult: async (wordbookId, totalScore, maxScore, wrongWordIds, partDetails) => {
-    const wb = get().wordbooks.find(w => w.id === wordbookId);
+    const wb = get().wordbooks.find(w => w.id === wordbookId) || get().allWordbooks.find(w => w.id === wordbookId);
     let activeStudentId = get().studentId;
     if (!activeStudentId || !isUuid(activeStudentId)) {
       activeStudentId = getOrCreateUserId();
       set({ studentId: activeStudentId });
     }
+
+    const customTitle = wordbookId === 'wb-custom-wrong' ? '오답 집중 재시험' : undefined;
+    const customChapter = wordbookId === 'wb-custom-wrong' ? 'REVIEW' : undefined;
 
     const newResult: QuizResult = {
       id: `qr-${Date.now()}`,
@@ -1192,8 +1209,8 @@ export const useVocaStore = create<VocaState>((set, get) => ({
       total_score: totalScore,
       max_score: maxScore,
       created_at: new Date().toISOString(),
-      wordbook_title: wb?.title,
-      wordbook_chapter: wb?.chapter,
+      wordbook_title: wb?.title || customTitle,
+      wordbook_chapter: wb?.chapter || customChapter,
       spelling_score: partDetails?.spellingScore,
       spelling_max: partDetails?.spellingMax,
       meaning_score: partDetails?.meaningScore,

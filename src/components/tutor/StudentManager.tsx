@@ -6,10 +6,23 @@ import { StudentReportModal } from '@/components/tutor/StudentReportModal';
 import { Users, Award, BookOpen, AlertTriangle, FileSpreadsheet, UserCheck, ChevronRight, CheckCircle2 } from 'lucide-react';
 
 export const StudentManager: React.FC = () => {
-  const { quizResults, incorrectNotes, availableStudents, studyLogs } = useVocaStore();
+  const { quizResults, incorrectNotes, availableStudents, studyLogs, allWordbooks, wordbooks } = useVocaStore();
 
   const [isReportOpen, setIsReportOpen] = useState(false);
   const [selectedStudentId, setSelectedStudentId] = useState<string>('');
+
+  // Helper to resolve wordbook details using quiz_results' wordbook_id
+  const getWordbookInfo = (wordbookId?: string | null) => {
+    if (!wordbookId) return null;
+    if (wordbookId === 'wb-custom-wrong') {
+      return { title: '오답 집중 재시험', chapter: 'REVIEW', tutor_name: null };
+    }
+    const targetId = wordbookId.trim().toLowerCase();
+    return (
+      (allWordbooks || []).find(w => (w.id || '').trim().toLowerCase() === targetId) ||
+      (wordbooks || []).find(w => (w.id || '').trim().toLowerCase() === targetId)
+    );
+  };
 
   // Fallback default student list if DB profiles is empty
   const defaultStudents = availableStudents.length > 0
@@ -198,16 +211,28 @@ export const StudentManager: React.FC = () => {
           <div className="divide-y divide-slate-100">
             {studentQuizResults.map((result) => {
               const scorePct = Math.round((result.total_score / (result.max_score || 1)) * 100);
+              const matchedWb = getWordbookInfo(result.wordbook_id);
+              const wordbookTitle = matchedWb?.title || result.wordbook_title || (result.wordbook_id === 'wb-custom-wrong' ? '오답 집중 재시험' : '단어장');
+              const wordbookChapter = matchedWb?.chapter || result.wordbook_chapter || (result.wordbook_id === 'wb-custom-wrong' ? 'REVIEW' : '');
+
               return (
                 <div key={result.id} className="p-4 sm:px-6 flex items-center justify-between hover:bg-slate-50 transition-colors">
                   <div className="space-y-1">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <BookOpen className="w-4 h-4 text-blue-600 shrink-0" />
                       <span className="font-bold text-sm text-slate-800">
-                        {result.wordbook_title || '단어장'}
+                        {wordbookTitle}
                       </span>
-                      <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 text-xs font-mono font-bold">
-                        {result.wordbook_chapter || 'Chapter'}
-                      </span>
+                      {wordbookChapter && (
+                        <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 text-xs font-mono font-bold">
+                          {wordbookChapter}
+                        </span>
+                      )}
+                      {matchedWb?.tutor_name && (
+                        <span className="text-[11px] text-slate-400 font-medium">
+                          ({matchedWb.tutor_name})
+                        </span>
+                      )}
                     </div>
                     <p className="text-xs text-slate-500 font-medium">
                       응시일: {new Date(result.created_at).toLocaleString('ko-KR')}
@@ -226,7 +251,7 @@ export const StudentManager: React.FC = () => {
 
                     <button
                       onClick={() => setIsReportOpen(true)}
-                      className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-colors flex items-center gap-1"
+                      className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer"
                     >
                       <FileSpreadsheet className="w-3.5 h-3.5 text-blue-600" />
                       <span>보고서</span>

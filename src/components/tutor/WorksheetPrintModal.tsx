@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Wordbook, Word } from '@/types/database';
 import { Printer, Download, X, Eye, FileText, CheckCircle } from 'lucide-react';
 
@@ -18,16 +19,36 @@ export const WorksheetPrintModal: React.FC<WorksheetPrintModalProps> = ({
   words
 }) => {
   const [mode, setMode] = useState<'study' | 'quiz' | 'answer'>('study');
+  const [mounted, setMounted] = useState(false);
 
-  if (!isOpen) return null;
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (isOpen) {
+      document.body.classList.add('print-modal-open');
+      return () => {
+        document.body.classList.remove('print-modal-open');
+      };
+    }
+  }, [isOpen]);
+
+  if (!isOpen || !mounted) return null;
 
   const handlePrint = () => {
     window.print();
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-in fade-in duration-200 print:p-0 print:static print:bg-white">
-      <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-4xl shadow-2xl overflow-hidden text-slate-800 flex flex-col max-h-[90vh] print:max-h-none print:shadow-none print:border-none print:bg-white print:text-black">
+  const modalContent = (
+    <div
+      id="print-modal-root"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-in fade-in duration-200 print:p-0 print:static print:bg-white print:w-full print:m-0 print:block print:inset-auto"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-4xl shadow-2xl overflow-hidden text-slate-800 flex flex-col max-h-[90vh] print:max-h-none print:shadow-none print:border-none print:bg-white print:text-black print:w-full print:m-0 print:overflow-visible print:block print:rounded-none">
         
         {/* Header - Screen only */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50 print:hidden">
@@ -153,4 +174,6 @@ export const WorksheetPrintModal: React.FC<WorksheetPrintModalProps> = ({
       </div>
     </div>
   );
+
+  return createPortal(modalContent, document.body);
 };
