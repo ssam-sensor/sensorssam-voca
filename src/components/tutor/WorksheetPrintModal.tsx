@@ -19,6 +19,7 @@ export const WorksheetPrintModal: React.FC<WorksheetPrintModalProps> = ({
   words
 }) => {
   const [mode, setMode] = useState<'study' | 'quiz' | 'answer'>('study');
+  const [includeExamples, setIncludeExamples] = useState(true);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -96,13 +97,25 @@ export const WorksheetPrintModal: React.FC<WorksheetPrintModalProps> = ({
             </button>
           </div>
 
-          <button
-            onClick={handlePrint}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-sm transition-all active:scale-95"
-          >
-            <Printer className="w-4 h-4" />
-            <span>프린트 / PDF 인쇄</span>
-          </button>
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={includeExamples}
+                onChange={(e) => setIncludeExamples(e.target.checked)}
+                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+              />
+              <span>예문 및 해석 포함</span>
+            </label>
+
+            <button
+              onClick={handlePrint}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-sm transition-all active:scale-95"
+            >
+              <Printer className="w-4 h-4" />
+              <span>프린트 / PDF 인쇄</span>
+            </button>
+          </div>
         </div>
 
         {/* Printable Paper View */}
@@ -153,9 +166,9 @@ export const WorksheetPrintModal: React.FC<WorksheetPrintModalProps> = ({
                     ) : (
                       <div>
                         <span className="font-semibold text-slate-700">{item.meaning}</span>
-                        {item.example_sentence && (
-                          <p className="text-[11px] text-slate-500 italic mt-0.5">
-                            ex) {item.example_sentence}
+                        {includeExamples && item.example_sentence && (
+                          <p className="text-[11px] text-slate-600 italic mt-0.5">
+                            ex) {item.example_sentence} {item.example_translation ? `(${item.example_translation})` : ''}
                           </p>
                         )}
                       </div>

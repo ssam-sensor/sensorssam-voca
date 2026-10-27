@@ -106,33 +106,33 @@ export async function POST(req: Request) {
     if (action === 'extract_multimodal') {
       const { base64Data, mimeType, mode } = body;
 
-      const promptAll = `제공된 교재 이미지/PDF 페이지에서 표제어, 단어, 숙어를 순서대로 추출하여 아래 포맷에 맞춰 텍스트로만 출력해 줘.
+      const promptAll = `제공된 영어 교재 이미지/PDF 페이지에서 표제어, 단어, 숙어를 순서대로 추출하고, 교재에 수록된 영어 예문과 예문 한글 해석이 있다면 함께 추출하여 탭(\\t)으로 구분된 아래 포맷에 맞춰 텍스트로만 출력해 줘.
 
-[출력 포맷 규칙]
-단어, 발음기호, 품사, 한글 뜻
+[출력 포맷 규칙 (탭(\\t) 구분)]
+단어\t발음기호\t품사\t한글 뜻\t영어 예문\t예문 해석
 
-- 대괄호 [] 없는 발음기호 작성
-- 복수 품사 및 복수 뜻은 세미콜론(;)으로 구분
-- 마크다운 기호, 번호 매기기, 부가 설명 없이 각 단어를 한 줄씩 위 포맷대로만 출력할 것
-- 예시:
-opposite, ápəzit, 형용사; 명사, 반대쪽의; 정반대의; 반대의 사람[일/물건]
-accompany, əkʌ́mpəni, 동사, 동반하다; 수반하다; 반주하다
-keep track of, 숙어, 숙어, ~을 기록하다; ~의 자국을 뒤밟다`;
+[작성 지침]
+1. 각 열은 반드시 탭(\\t)으로 구분할 것 (예문 속 쉼표가 열을 깨트리지 않도록 탭을 사용).
+2. 교재에 표기된 발음기호는 대괄호 [] 없이 작성.
+3. 복수 품사 및 복수 뜻은 세미콜론(;)으로 구분.
+4. 교재에 해당 단어의 영어 예문이 적혀 있으면 '영어 예문' 열에 적고, 해석이 있으면 '예문 해석' 열에 적어줘. 만약 예문이 교재에 없다면 빈 칸으로 남겨둘 것.
+5. 마크다운 코드블록, 번호 매기기, 머리말, 부가 설명 없이 각 단어를 한 줄씩 위 탭 구분 포맷대로만 출력할 것.
+6. 예시:
+opposite\tápəzit\t형용사; 명사\t반대쪽의; 정반대의\tThey sat on opposite sides of the table.\t그들은 테이블의 반대편에 앉았다.
+accompany\təkʌ́mpəni\t동사\t동반하다; 수반하다\tChildren must be accompanied by an adult.\t어린이는 성인을 동반해야 합니다.
+keep track of\t숙어\t숙어\t~을 기록하다; 놓치지 않다\tIt is hard to keep track of all the changes.\t모든 변화를 파악하기는 어렵다.`;
 
-      const promptMarked = `제공된 교재 이미지/문서에서 손글씨로 '동그라미(원)'가 쳐져 있거나, '형광펜/밑줄'로 하이라이트 표시된 단어 및 숙어만 찾아서 추출해 줘.
+      const promptMarked = `제공된 영어 교재 이미지/문서에서 손글씨로 '동그라미(원)'가 쳐져 있거나, '형광펜/밑줄'로 하이라이트 표시된 단어 및 숙어만 찾아서 교재의 발음기호, 품사, 한글 뜻, 수록된 영어 예문, 예문 해석과 함께 탭(\\t)으로 구분하여 출력해 줘.
 
 [추출 및 작성 규칙]
 1. 표시가 없는 일반 단어는 모두 제외하고, 오직 체크/표시된 단어만 추출할 것.
-2. 추출된 단어의 발음기호, 품사, 한글 뜻은 교재에 적힌 내용을 그대로 매칭하여 작성할 것.
-3. 출력 포맷:
-   단어, 발음기호, 품사, 한글 뜻
-   - 대괄호 [] 없는 발음기호
-   - 복수 품사 및 복수 뜻은 세미콜론(;)으로 구분
-   - 마크다운이나 부가 설명 없이 오직 한 줄에 한 단어씩 포맷대로만 출력할 것.
-   - 예시:
-   opposite, ápəzit, 형용사; 명사, 반대쪽의; 정반대의; 반대의 사람[일/물건]
-   accompany, əkʌ́mpəni, 동사, 동반하다; 수반하다; 반주하다
-   keep track of, 숙어, 숙어, ~을 기록하다; ~의 자국을 뒤밟다`;
+2. 출력 포맷 (탭(\\t) 구분):
+   단어\t발음기호\t품사\t한글 뜻\t영어 예문\t예문 해석
+3. 대괄호 [] 없는 발음기호, 복수 품사/뜻은 세미콜론(;) 구분.
+4. 교재에 수록된 예문과 해석이 있으면 포함하고, 없으면 빈 탭으로 둘 것.
+5. 마크다운이나 부가 설명 없이 오직 한 줄에 한 단어씩 탭 구분 포맷대로만 출력할 것.
+6. 예시:
+opposite\tápəzit\t형용사; 명사\t반대쪽의; 정반대의\tThey sat on opposite sides of the table.\t그들은 테이블의 반대편에 앉았다.`;
 
       const promptText = mode === 'marked' ? promptMarked : promptAll;
 
@@ -308,6 +308,87 @@ Return ONLY raw JSON without markdown codeblock formatting.`;
         const cleaned = resultText.replace(/```json\n?|\n?```/g, '').trim();
         const evalResult = JSON.parse(cleaned);
         return NextResponse.json(evalResult);
+      } catch (err: any) {
+        return NextResponse.json({ error: err.message }, { status: 500 });
+      }
+    }
+
+    // 6. Generate natural example sentence and Korean translation for a single word
+    if (action === 'generate_example') {
+      const { word, meaning, pos } = body;
+      const prompt = `You are an expert English vocabulary educator creating examples for Korean high school and college entrance exam (CSAT) learners.
+English Word: "${word}"
+Part of Speech: "${pos || ''}"
+Target Meaning: "${meaning || ''}"
+
+Generate a natural, clear, practical English example sentence showcasing the word in proper context, and provide an accurate, fluent Korean translation.
+
+Return ONLY raw JSON in this format:
+{
+  "example_sentence": "Natural English sentence containing the target word.",
+  "example_translation": "자연스러운 한국어 해석 문장."
+}`;
+
+      try {
+        const resultText = await executeGeminiWithRetry(ai, (model) => ({
+          model,
+          contents: prompt,
+          config: {
+            temperature: 0.3,
+            responseMimeType: 'application/json'
+          }
+        }));
+
+        const cleaned = resultText.replace(/```json\n?|\n?```/g, '').trim();
+        const parsed = JSON.parse(cleaned);
+        return NextResponse.json({
+          example_sentence: parsed.example_sentence || '',
+          example_translation: parsed.example_translation || ''
+        });
+      } catch (err: any) {
+        return NextResponse.json({ error: err.message }, { status: 500 });
+      }
+    }
+
+    // 7. Batch generate example sentences for multiple words
+    if (action === 'generate_examples_batch') {
+      const { items } = body; // Array of { word, meaning, pos? }
+      if (!Array.isArray(items) || items.length === 0) {
+        return NextResponse.json({ items: [] });
+      }
+
+      const prompt = `You are an expert English vocabulary educator creating examples for Korean students.
+For each given English word and meaning, create a natural, clear English example sentence and its natural Korean translation.
+
+Input Words:
+${JSON.stringify(items)}
+
+Return a raw JSON array matching each word in order:
+[
+  {
+    "word": "target word",
+    "example_sentence": "Natural English example sentence.",
+    "example_translation": "자연스러운 한국어 해석."
+  }
+]
+
+Return ONLY raw JSON array without markdown codeblock wrapper.`;
+
+      try {
+        const resultText = await executeGeminiWithRetry(ai, (model) => ({
+          model,
+          contents: prompt,
+          config: {
+            temperature: 0.3,
+            responseMimeType: 'application/json'
+          }
+        }));
+
+        const cleaned = resultText.replace(/```json\n?|\n?```/g, '').trim();
+        const parsed = JSON.parse(cleaned);
+        return NextResponse.json({
+          items: Array.isArray(parsed) ? parsed : []
+        });
       } catch (err: any) {
         return NextResponse.json({ error: err.message }, { status: 500 });
       }

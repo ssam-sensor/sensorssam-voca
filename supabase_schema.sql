@@ -59,6 +59,10 @@ create table if not exists words (
   is_spelling_priority boolean default false -- Part 1(스펠링 필수 암기) 대상 여부
 );
 
+-- 기존 words 테이블이 이미 생성되어 있더라도 안전하게 필요한 컬럼 추가
+alter table words add column if not exists example_sentence text;
+alter table words add column if not exists example_translation text;
+
 -- 5. 시험 및 오답 관리 테이블
 create table if not exists quiz_results (
   id uuid default gen_random_uuid() primary key,
@@ -79,15 +83,53 @@ create table if not exists incorrect_notes (
   updated_at timestamp with time zone default timezone('utc'::text, now())
 );
 
--- 6. 출석 및 공부 시간 관리 테이블
+-- 6. 출석 및 공부 시간 관리 테이블 (신규 생성)
 create table if not exists study_logs (
   id uuid default gen_random_uuid() primary key,
   student_id uuid references profiles(id) on delete cascade,
   study_date date default current_date,
   duration_seconds int default 0,
+  wordbook_ids text[] default '{}',
   created_at timestamp with time zone default timezone('utc'::text, now()),
   unique(student_id, study_date)
 );
+
+-- [기존 DB 마이그레이션] study_logs 테이블에 user_id, count 등 구버전 컬럼이 있는 경우 자동 보정
+do $$ 
+begin
+  -- 1) student_id 컬럼 추가 및 user_id 데이터 이관
+  if not exists (select 1 from information_schema.columns where table_name = 'study_logs' and column_name = 'student_id') then
+    alter table study_logs add column student_id uuid references profiles(id) on delete cascade;
+    if exists (select 1 from information_schema.columns where table_name = 'study_logs' and column_name = 'user_id') then
+      update study_logs set student_id = user_id where student_id is null;
+    end if;
+  end if;
+
+  -- 2) duration_seconds 컬럼 추가 및 count 데이터 이관
+  if not exists (select 1 from information_schema.columns where table_name = 'study_logs' and column_name = 'duration_seconds') then
+    alter table study_logs add column duration_seconds int default 0;
+    if exists (select 1 from information_schema.columns where table_name = 'study_logs' and column_name = 'count') then
+      update study_logs set duration_seconds = count where duration_seconds is null or duration_seconds = 0;
+    end if;
+  end if;
+
+  -- 3) wordbook_ids 컬럼 추가 (학습한 단어장/과 목록 저장)
+  if not exists (select 1 from information_schema.columns where table_name = 'study_logs' and column_name = 'wordbook_ids') then
+    alter table study_logs add column wordbook_ids text[] default '{}';
+  end if;
+end $$;
+
+-- 4) 복합 유니크 제약조건 추가 (중복 방지 및 날짜별 단일 집계)
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'study_logs_student_id_study_date_key'
+  ) then
+    alter table study_logs add constraint study_logs_student_id_study_date_key unique (student_id, study_date);
+  end if;
+exception when others then
+  null;
+end $$;
 
 -- Row Level Security (RLS) Policies
 alter table profiles enable row level security;

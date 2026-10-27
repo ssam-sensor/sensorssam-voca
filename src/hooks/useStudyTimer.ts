@@ -3,15 +3,23 @@ import { useVocaStore } from '@/store/useVocaStore';
 
 /**
  * Custom hook to track active student study time with a 3-minute idle auto-pause threshold.
- * Flushes accumulated study seconds to store/Supabase DB every 30s and on unmount.
+ * Flushes accumulated study seconds and wordbook activity to store/DB periodically and on unmount.
  */
-export function useStudyTimer(isActive: boolean = true): number {
+export function useStudyTimer(isActive: boolean = true, wordbookId?: string): void {
   const { addStudyTime } = useVocaStore();
   const accumulatedSecondsRef = useRef<number>(0);
-  const lastActivityRef = useRef<number>(Date.now());
+  const lastActivityRef = useRef<number>(0);
+  const wordbookIdRef = useRef<string | undefined>(wordbookId);
+
+  // Keep wordbookIdRef updated without restarting timer
+  useEffect(() => {
+    wordbookIdRef.current = wordbookId;
+  }, [wordbookId]);
 
   useEffect(() => {
     if (!isActive) return;
+
+    lastActivityRef.current = Date.now();
 
     // Reset last activity timestamp on user interaction
     const handleActivity = () => {
@@ -34,18 +42,18 @@ export function useStudyTimer(isActive: boolean = true): number {
       }
     }, 1000);
 
-    // Periodic flush to DB every 30 seconds
+    // Periodic flush to store & DB every 15 seconds
     const flushInterval = setInterval(() => {
       if (accumulatedSecondsRef.current > 0) {
-        addStudyTime(accumulatedSecondsRef.current);
+        addStudyTime(accumulatedSecondsRef.current, wordbookIdRef.current);
         accumulatedSecondsRef.current = 0;
       }
-    }, 30000);
+    }, 15000);
 
     // Tab close / unmount flush
     const handleUnload = () => {
       if (accumulatedSecondsRef.current > 0) {
-        addStudyTime(accumulatedSecondsRef.current);
+        addStudyTime(accumulatedSecondsRef.current, wordbookIdRef.current);
         accumulatedSecondsRef.current = 0;
       }
     };
@@ -67,11 +75,9 @@ export function useStudyTimer(isActive: boolean = true): number {
       }
 
       if (accumulatedSecondsRef.current > 0) {
-        addStudyTime(accumulatedSecondsRef.current);
+        addStudyTime(accumulatedSecondsRef.current, wordbookIdRef.current);
         accumulatedSecondsRef.current = 0;
       }
     };
   }, [isActive, addStudyTime]);
-
-  return accumulatedSecondsRef.current;
 }

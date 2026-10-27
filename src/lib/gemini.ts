@@ -347,3 +347,65 @@ export async function gradeStudentAnswerWithGemini(
   }
 }
 
+/**
+ * AI Single Word Example Sentence Generator
+ */
+export async function generateExampleForWord(
+  word: string,
+  meaning: string,
+  pos?: string
+): Promise<{ example_sentence: string; example_translation: string }> {
+  if (!word || !word.trim()) {
+    return { example_sentence: '', example_translation: '' };
+  }
+
+  try {
+    const data = await callServerGeminiApi({
+      action: 'generate_example',
+      word,
+      meaning,
+      pos
+    });
+
+    return {
+      example_sentence: data.example_sentence || '',
+      example_translation: data.example_translation || ''
+    };
+  } catch (err: any) {
+    console.warn('generateExampleForWord failed:', err);
+    throw err;
+  }
+}
+
+/**
+ * AI Batch Example Sentence Generator for multiple words
+ */
+export async function generateExamplesBatch(
+  items: { word: string; meaning: string; pos?: string }[]
+): Promise<Record<string, { example_sentence: string; example_translation: string }>> {
+  if (!items || items.length === 0) return {};
+
+  try {
+    const data = await callServerGeminiApi({
+      action: 'generate_examples_batch',
+      items
+    });
+
+    const result: Record<string, { example_sentence: string; example_translation: string }> = {};
+    if (Array.isArray(data.items)) {
+      for (const item of data.items) {
+        if (item.word) {
+          result[item.word.toLowerCase()] = {
+            example_sentence: item.example_sentence || '',
+            example_translation: item.example_translation || ''
+          };
+        }
+      }
+    }
+    return result;
+  } catch (err: any) {
+    console.warn('generateExamplesBatch failed:', err);
+    throw err;
+  }
+}
+

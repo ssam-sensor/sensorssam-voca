@@ -4,6 +4,9 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useVocaStore } from '@/store/useVocaStore';
 import { generateStudentEvaluationFeedback } from '@/lib/gemini';
+import { calculateStudentStudyStats } from '@/lib/study-analytics';
+import { formatDuration } from '@/lib/date-utils';
+import { AttendanceCalendar } from '@/components/study/AttendanceCalendar';
 import {
   Printer,
   X,
@@ -37,6 +40,8 @@ export const StudentReportModal: React.FC<StudentReportModalProps> = ({
     incorrectNotes,
     words,
     studyLogs,
+    allWordbooks,
+    wordbooks,
     studentId: storeStudentId,
     userName: storeUserName,
     userEmail: storeUserEmail,
@@ -91,42 +96,24 @@ export const StudentReportModal: React.FC<StudentReportModalProps> = ({
     return true;
   });
 
-  // Overview calculations
-  const totalQuizzes = targetQuizResults.length;
+  // Calculate unified study statistics & daily summaries
+  const studentStats = calculateStudentStudyStats({
+    studentId: activeStudentId,
+    studyLogs,
+    quizResults: targetQuizResults,
+    allWordbooks,
+    wordbooks,
+    todayDateStr: currentDateInfo.todayStr
+  });
 
-  // Recent 7 days calculation for Attendance & Study Time
-  const todayStr = currentDateInfo.todayStr;
-  const sevenDaysAgoStr = currentDateInfo.sevenDaysAgoStr;
+  const totalQuizzes = targetQuizResults.length;
   const currentDateStr = currentDateInfo.currentDateStr;
 
-  const todayLog = targetStudyLogs.find(l => l.study_date === todayStr);
-  const todaySeconds = todayLog?.duration_seconds || 0;
-
-  const thisWeekLogs = targetStudyLogs.filter(l => l.study_date >= sevenDaysAgoStr && l.study_date <= todayStr);
-  const attendanceDaysThisWeek = new Set(thisWeekLogs.map(l => l.study_date)).size;
-  const weeklyTotalSeconds = thisWeekLogs.reduce((acc, l) => acc + (l.duration_seconds || 0), 0);
-
-  const formatDuration = (sec: number) => {
-    if (sec <= 0) return '0분';
-    if (sec < 60) return `${sec}초`;
-    const mins = Math.floor(sec / 60);
-    const hours = Math.floor(mins / 60);
-    const remMins = mins % 60;
-    if (hours > 0) {
-      return remMins > 0 ? `${hours}시간 ${remMins}분` : `${hours}시간`;
-    }
-    return `${mins}분`;
-  };
-
-  const todayStudyTimeText = formatDuration(todaySeconds);
-  const weeklyStudyTimeText = formatDuration(weeklyTotalSeconds);
-
-  // Average score % across this student's actual quizzes
-  const avgScorePct = totalQuizzes > 0
-    ? Math.round(
-        targetQuizResults.reduce((acc, q) => acc + (q.total_score / (q.max_score || 1)) * 100, 0) / totalQuizzes
-      )
-    : 0;
+  const attendanceDaysThisWeek = studentStats.weeklyAttendanceDays;
+  const todayStudyTimeText = formatDuration(studentStats.todayStudySeconds);
+  const weeklyStudyTimeText = formatDuration(studentStats.weeklyStudySeconds);
+  const totalStudyTimeText = formatDuration(studentStats.totalStudySeconds);
+  const avgScorePct = studentStats.averageScorePct;
 
   // Flatten registered words
   const allWordsList = Object.values(words).flat();
@@ -478,18 +465,18 @@ export const StudentReportModal: React.FC<StudentReportModalProps> = ({
                 <div className="text-2xl font-extrabold text-blue-900">
                   {attendanceDaysThisWeek} <span className="text-xs text-slate-500 font-bold">/ 7일 출석</span>
                 </div>
-                <p className="text-[11px] text-slate-500">주간 출석률 {Math.round((attendanceDaysThisWeek / 7) * 100)}%</p>
+                <p className="text-[11px] text-slate-500">총 누적 {studentStats.totalAttendanceDays}일 출석 인정</p>
               </div>
 
               <div className="p-4 rounded-2xl bg-indigo-50/60 border border-indigo-200 space-y-1">
                 <div className="flex items-center justify-between text-xs text-indigo-900 font-extrabold">
-                  <span>오늘 공부한 시간</span>
+                  <span>총 공부한 시간</span>
                   <TrendingUp className="w-4 h-4 text-indigo-600" />
                 </div>
                 <div className="text-2xl font-extrabold text-indigo-900">
-                  {todayStudyTimeText}
+                  {totalStudyTimeText}
                 </div>
-                <p className="text-[11px] text-slate-500">이번 주 총 {weeklyStudyTimeText}</p>
+                <p className="text-[11px] text-slate-500">오늘 {todayStudyTimeText} · 이번 주 {weeklyStudyTimeText}</p>
               </div>
 
               <div className="p-4 rounded-2xl bg-emerald-50/60 border border-emerald-200 space-y-1">
@@ -519,6 +506,11 @@ export const StudentReportModal: React.FC<StudentReportModalProps> = ({
                     : '시험 미응시'}
                 </p>
               </div>
+            </div>
+
+            {/* Attendance & Lesson Calendar inside Report */}
+            <div className="pt-2">
+              <AttendanceCalendar stats={studentStats} studentName={displayStudentName} isCompact={true} />
             </div>
           </div>
 

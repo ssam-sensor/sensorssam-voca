@@ -3,8 +3,9 @@
 import React, { useState } from 'react';
 import { useVocaStore } from '@/store/useVocaStore';
 import { Wordbook, Word } from '@/types/database';
-import { Edit3, Plus, Trash2, X, Check, Volume2, AlertCircle, Sparkles } from 'lucide-react';
+import { Edit3, Plus, Trash2, X, Check, Volume2, AlertCircle, Sparkles, Loader2 } from 'lucide-react';
 import { speakText } from '@/lib/audio';
+import { generateExampleForWord } from '@/lib/gemini';
 
 interface WordEditModalProps {
   isOpen: boolean;
@@ -35,6 +36,9 @@ export const WordEditModal: React.FC<WordEditModalProps> = ({ isOpen, onClose, w
 
   const [isAdding, setIsAdding] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
+  const [isGeneratingNewExample, setIsGeneratingNewExample] = useState(false);
+  const [isGeneratingEditExample, setIsGeneratingEditExample] = useState(false);
+  const [quickGeneratingWordId, setQuickGeneratingWordId] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
@@ -61,6 +65,66 @@ export const WordEditModal: React.FC<WordEditModalProps> = ({ isOpen, onClose, w
       await deleteWord(wordId, wordbook.id);
       setStatusMsg('단어가 삭제되었습니다.');
       setTimeout(() => setStatusMsg(null), 2000);
+    }
+  };
+
+  const handleGenerateNewWordExample = async () => {
+    if (!newWord.word.trim()) {
+      alert('단어를 먼저 입력해 주세요.');
+      return;
+    }
+    setIsGeneratingNewExample(true);
+    try {
+      const res = await generateExampleForWord(newWord.word, newWord.meaning, newWord.pos);
+      setNewWord(prev => ({
+        ...prev,
+        example_sentence: res.example_sentence || prev.example_sentence,
+        example_translation: res.example_translation || prev.example_translation
+      }));
+    } catch (err: any) {
+      alert(err.message || 'AI 예문 생성 중 오류가 발생했습니다.');
+    } finally {
+      setIsGeneratingNewExample(false);
+    }
+  };
+
+  const handleGenerateEditFormExample = async () => {
+    if (!editForm.word?.trim()) {
+      alert('단어를 먼저 입력해 주세요.');
+      return;
+    }
+    setIsGeneratingEditExample(true);
+    try {
+      const res = await generateExampleForWord(editForm.word, editForm.meaning || '', editForm.pos || '');
+      setEditForm(prev => ({
+        ...prev,
+        example_sentence: res.example_sentence || prev.example_sentence,
+        example_translation: res.example_translation || prev.example_translation
+      }));
+    } catch (err: any) {
+      alert(err.message || 'AI 예문 생성 중 오류가 발생했습니다.');
+    } finally {
+      setIsGeneratingEditExample(false);
+    }
+  };
+
+  const handleQuickAddExample = async (w: Word) => {
+    setQuickGeneratingWordId(w.id);
+    try {
+      const res = await generateExampleForWord(w.word, w.meaning, w.pos || undefined);
+      if (res.example_sentence) {
+        await updateWord({
+          ...w,
+          example_sentence: res.example_sentence,
+          example_translation: res.example_translation
+        });
+        setStatusMsg(`'${w.word}'의 예문이 등록되었습니다.`);
+        setTimeout(() => setStatusMsg(null), 2000);
+      }
+    } catch (err: any) {
+      alert(err.message || 'AI 예문 생성 실패');
+    } finally {
+      setQuickGeneratingWordId(null);
     }
   };
 
@@ -196,21 +260,54 @@ export const WordEditModal: React.FC<WordEditModalProps> = ({ isOpen, onClose, w
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                  <input
-                    type="text"
-                    value={newWord.example_sentence}
-                    onChange={(e) => setNewWord({ ...newWord, example_sentence: e.target.value })}
-                    placeholder="예문 (English sentence)"
-                    className="w-full px-2.5 py-1.5 rounded-lg bg-white border border-slate-300 text-[11px] text-slate-700"
-                  />
-                  <input
-                    type="text"
-                    value={newWord.example_translation}
-                    onChange={(e) => setNewWord({ ...newWord, example_translation: e.target.value })}
-                    placeholder="예문 해석 (Korean translation)"
-                    className="w-full px-2.5 py-1.5 rounded-lg bg-white border border-slate-300 text-[11px] text-slate-700"
-                  />
+                <div className="space-y-1.5 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                  <div className="flex items-center justify-between text-[11px] font-bold text-slate-700">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-blue-700 font-bold">예문 & 해석</span>
+                      {newWord.example_sentence && (
+                        <button
+                          type="button"
+                          onClick={() => speakText(newWord.example_sentence)}
+                          className="p-1 rounded text-slate-400 hover:text-blue-600 hover:bg-slate-200 transition-colors"
+                          title="예문 발음 듣기"
+                        >
+                          <Volume2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleGenerateNewWordExample}
+                      disabled={isGeneratingNewExample || !newWord.word.trim()}
+                      className="flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-bold transition-colors disabled:opacity-40"
+                      title="Gemini AI로 예문과 해석 자동 생성"
+                    >
+                      {isGeneratingNewExample ? (
+                        <Loader2 className="w-3 h-3 animate-spin text-amber-700" />
+                      ) : (
+                        <Sparkles className="w-3 h-3 text-amber-600" />
+                      )}
+                      <span>AI 예문 자동 생성</span>
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                    <input
+                      type="text"
+                      value={newWord.example_sentence}
+                      onChange={(e) => setNewWord({ ...newWord, example_sentence: e.target.value })}
+                      placeholder="영어 예문 (예: She persevered in her studies.)"
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-white border border-slate-300 text-xs text-slate-800 focus:ring-2 focus:ring-blue-100 placeholder-slate-400"
+                    />
+                    <input
+                      type="text"
+                      value={newWord.example_translation}
+                      onChange={(e) => setNewWord({ ...newWord, example_translation: e.target.value })}
+                      placeholder="예문 한글 해석 (예: 그녀는 학업을 계속했다.)"
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-white border border-slate-300 text-xs text-slate-800 focus:ring-2 focus:ring-blue-100 placeholder-slate-400"
+                    />
+                  </div>
                 </div>
 
                 <div className="flex items-center justify-between pt-1">
@@ -317,21 +414,54 @@ export const WordEditModal: React.FC<WordEditModalProps> = ({ isOpen, onClose, w
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                        <input
-                          type="text"
-                          value={editForm.example_sentence || ''}
-                          onChange={(e) => setEditForm({ ...editForm, example_sentence: e.target.value })}
-                          placeholder="예문"
-                          className="w-full px-2.5 py-1 rounded-lg bg-white border border-slate-300 text-[11px]"
-                        />
-                        <input
-                          type="text"
-                          value={editForm.example_translation || ''}
-                          onChange={(e) => setEditForm({ ...editForm, example_translation: e.target.value })}
-                          placeholder="예문 해석"
-                          className="w-full px-2.5 py-1 rounded-lg bg-white border border-slate-300 text-[11px]"
-                        />
+                      <div className="space-y-1.5 bg-white p-2.5 rounded-xl border border-blue-200">
+                        <div className="flex items-center justify-between text-[11px] font-bold text-slate-700">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-blue-700 font-bold">예문 & 해석</span>
+                            {editForm.example_sentence && (
+                              <button
+                                type="button"
+                                onClick={() => speakText(editForm.example_sentence!)}
+                                className="p-1 rounded text-slate-400 hover:text-blue-600 hover:bg-slate-100 transition-colors"
+                                title="예문 발음 듣기"
+                              >
+                                <Volume2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={handleGenerateEditFormExample}
+                            disabled={isGeneratingEditExample || !editForm.word?.trim()}
+                            className="flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-bold transition-colors disabled:opacity-40"
+                            title="Gemini AI로 예문과 해석 자동 생성"
+                          >
+                            {isGeneratingEditExample ? (
+                              <Loader2 className="w-3 h-3 animate-spin text-amber-700" />
+                            ) : (
+                              <Sparkles className="w-3 h-3 text-amber-600" />
+                            )}
+                            <span>AI 예문 자동 생성</span>
+                          </button>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                          <input
+                            type="text"
+                            value={editForm.example_sentence || ''}
+                            onChange={(e) => setEditForm({ ...editForm, example_sentence: e.target.value })}
+                            placeholder="영어 예문"
+                            className="w-full px-2.5 py-1.5 rounded-lg bg-white border border-slate-300 text-xs text-slate-800"
+                          />
+                          <input
+                            type="text"
+                            value={editForm.example_translation || ''}
+                            onChange={(e) => setEditForm({ ...editForm, example_translation: e.target.value })}
+                            placeholder="예문 한글 해석"
+                            className="w-full px-2.5 py-1.5 rounded-lg bg-white border border-slate-300 text-xs text-slate-800"
+                          />
+                        </div>
                       </div>
 
                       <div className="flex items-center gap-4 text-xs pt-1">
@@ -389,10 +519,43 @@ export const WordEditModal: React.FC<WordEditModalProps> = ({ isOpen, onClose, w
 
                       <p className="text-xs font-bold text-emerald-800">{w.meaning}</p>
 
-                      {w.example_sentence && (
-                        <p className="text-[11px] text-slate-500 italic pt-0.5">
-                          &quot;{w.example_sentence}&quot; {w.example_translation ? `- ${w.example_translation}` : ''}
-                        </p>
+                      {w.example_sentence ? (
+                        <div className="pt-1.5 flex items-start gap-1.5 text-xs text-slate-600 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                          <button
+                            type="button"
+                            onClick={() => speakText(w.example_sentence!)}
+                            className="p-1 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-slate-200 transition-colors shrink-0 mt-0.5"
+                            title="예문 발음 듣기"
+                          >
+                            <Volume2 className="w-3.5 h-3.5" />
+                          </button>
+                          <div className="space-y-0.5">
+                            <p className="font-semibold text-slate-800 italic">
+                              &quot;{w.example_sentence}&quot;
+                            </p>
+                            {w.example_translation && (
+                              <p className="text-[11px] text-slate-500 font-medium">
+                                ↳ {w.example_translation}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="pt-1">
+                          <button
+                            type="button"
+                            onClick={() => handleQuickAddExample(w)}
+                            disabled={quickGeneratingWordId === w.id}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-amber-50 text-slate-600 hover:text-amber-800 border border-slate-200 hover:border-amber-300 text-[11px] font-bold transition-all disabled:opacity-50"
+                          >
+                            {quickGeneratingWordId === w.id ? (
+                              <Loader2 className="w-3 h-3 animate-spin text-amber-700" />
+                            ) : (
+                              <Sparkles className="w-3 h-3 text-amber-600" />
+                            )}
+                            <span>+ AI 예문 자동 등록</span>
+                          </button>
+                        </div>
                       )}
                     </div>
 

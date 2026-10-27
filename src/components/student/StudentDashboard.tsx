@@ -1,13 +1,15 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useVocaStore } from '@/store/useVocaStore';
 import { Wordbook, Word } from '@/types/database';
 import { FlashcardStudy } from '@/components/student/FlashcardStudy';
 import { QuizSuite } from '@/components/student/QuizSuite';
 import { IncorrectNotesView } from '@/components/student/IncorrectNotesView';
 import { WordbookFormModal } from '@/components/tutor/WordbookFormModal';
-import { StudentReportModal } from '@/components/tutor/StudentReportModal';
+import { AttendanceCalendar } from '@/components/study/AttendanceCalendar';
+import { calculateStudentStudyStats } from '@/lib/study-analytics';
+import { getLocalDateStr } from '@/lib/date-utils';
 import {
   BookOpen,
   Sparkles,
@@ -19,16 +21,21 @@ import {
   CheckSquare,
   Square,
   Users,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Calendar
 } from 'lucide-react';
 
 export const StudentDashboard: React.FC = () => {
   const {
     wordbooks,
+    allWordbooks,
     words,
     activeWordbookId,
     setActiveWordbookId,
     incorrectNotes,
+    quizResults,
+    studyLogs,
+    studentId,
     deleteWordbook,
     availableTutors,
     linkedTutorIds,
@@ -37,10 +44,26 @@ export const StudentDashboard: React.FC = () => {
     openStudentReport
   } = useVocaStore();
 
-  const [activeTab, setActiveTab] = useState<'study' | 'quiz' | 'incorrect'>('study');
+  const [activeTab, setActiveTab] = useState<'study' | 'quiz' | 'incorrect' | 'calendar'>('study');
   const [quizMode, setQuizMode] = useState<'standard' | 'ai'>('standard');
   const [customQuizWords, setCustomQuizWords] = useState<Word[] | null>(null);
   const [isFormModalOpen, setIsFormModalOpen] = useState<boolean>(false);
+
+  const [todayDateStr, setTodayDateStr] = useState<string>('');
+  useEffect(() => {
+    setTodayDateStr(getLocalDateStr(new Date()));
+  }, []);
+
+  const studentStats = useMemo(() => {
+    return calculateStudentStudyStats({
+      studentId,
+      studyLogs,
+      quizResults,
+      allWordbooks,
+      wordbooks,
+      todayDateStr
+    });
+  }, [studentId, studyLogs, quizResults, allWordbooks, wordbooks, todayDateStr]);
 
   const selectedWb = wordbooks.find(w => w.id === activeWordbookId) || wordbooks[0];
   const currentWords = words[selectedWb?.id] || [];
@@ -313,12 +336,25 @@ export const StudentDashboard: React.FC = () => {
             </span>
           )}
         </button>
+
+        <button
+          onClick={() => setActiveTab('calendar')}
+          className={`pb-3 border-b-2 flex items-center justify-center sm:justify-start gap-1.5 sm:gap-2 transition-colors ${
+            activeTab === 'calendar'
+              ? 'border-indigo-600 text-indigo-600 font-extrabold'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <Calendar className="w-4 h-4 text-indigo-600 shrink-0" />
+          <span>출석 & 학습 달력</span>
+        </button>
       </div>
 
       {/* Content Area */}
       {activeTab === 'study' && (
         <FlashcardStudy
           words={currentWords}
+          wordbookId={selectedWb?.id}
           onBack={() => {}}
           onStartQuiz={() => setActiveTab('quiz')}
         />
@@ -327,6 +363,13 @@ export const StudentDashboard: React.FC = () => {
       {activeTab === 'incorrect' && (
         <IncorrectNotesView
           onStartCustomQuiz={(wrongWords) => setCustomQuizWords(wrongWords)}
+        />
+      )}
+
+      {activeTab === 'calendar' && (
+        <AttendanceCalendar
+          stats={studentStats}
+          studentName={userName || '학생'}
         />
       )}
 

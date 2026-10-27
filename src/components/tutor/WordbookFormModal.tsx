@@ -3,9 +3,10 @@
 import React, { useState, useRef } from 'react';
 import { useVocaStore } from '@/store/useVocaStore';
 import { parseVocaText } from '@/lib/voca-parser';
-import { generateWordbookWithGemini, extractWordsFromMultimodalFile, getGeminiApiKey } from '@/lib/gemini';
+import { generateWordbookWithGemini, extractWordsFromMultimodalFile, generateExampleForWord, generateExamplesBatch } from '@/lib/gemini';
+import { speakText } from '@/lib/audio';
 import { VocaBatchItem } from '@/types/database';
-import { Sparkles, FileText, Plus, Trash2, X, AlertCircle, Loader2, ArrowRight, Upload, FileCheck, Image as ImageIcon, CircleDot, CheckCircle2 } from 'lucide-react';
+import { Sparkles, FileText, Plus, Trash2, X, AlertCircle, Loader2, ArrowRight, Upload, FileCheck, Image as ImageIcon, CircleDot, CheckCircle2, Volume2, Copy } from 'lucide-react';
 
 interface WordbookFormModalProps {
   isOpen: boolean;
@@ -37,6 +38,8 @@ export const WordbookFormModal: React.FC<WordbookFormModalProps> = ({ isOpen, on
 
   // Parsed Words Preview Table
   const [parsedWords, setParsedWords] = useState<VocaBatchItem[]>([]);
+  const [isGeneratingAllExamples, setIsGeneratingAllExamples] = useState(false);
+  const [generatingIndex, setGeneratingIndex] = useState<number | null>(null);
 
   // Reset form state to initial clean slate
   const resetForm = () => {
@@ -49,6 +52,8 @@ export const WordbookFormModal: React.FC<WordbookFormModalProps> = ({ isOpen, on
     setAiError(null);
     setBatchRawText('');
     setParsedWords([]);
+    setIsGeneratingAllExamples(false);
+    setGeneratingIndex(null);
     setActiveTab('ocr');
   };
 
@@ -150,6 +155,84 @@ export const WordbookFormModal: React.FC<WordbookFormModalProps> = ({ isOpen, on
   const handleBatchParse = () => {
     const items = parseVocaText(batchRawText);
     setParsedWords(prev => [...prev, ...items]);
+  };
+
+  const handleLoadBatchSample = () => {
+    setBatchRawText(
+`단어 | 발음기호 | 품사 | 뜻 | 예문 | 예문해석
+persevere | pə̀ːrsəvíər | 동사 | 인내하다, 끈기 있게 계속하다 | She persevered, despite many obstacles. | 그녀는 많은 장애물에도 불구하고, 끈기 있게 해냈다.
+vulnerable | vʌ́lnərəbl | 형용사 | 취약한, 상처받기 쉬운 | Elderly people are particularly vulnerable to the flu. | 어르신들은 특히 독감, 감기 등에 취약하다.
+ambiguous | æmbíɡjuəs | 형용사 | 애매한, 모호한 | The instructions were ambiguous and caused confusion. | 그 지시사항은 모호해서, 많은 혼란을 일으켰다.
+collaborate | kəlǽbərèit | 동사 | 협력하다, 공동 작업하다 | The two teams decided to collaborate, aiming for great results. | 두 팀은 좋은 결과를 목표로, 긴밀히 협력하기로 결정했다.
+focus on | | 숙어 | ~에 집중하다, 전념하다 | You should focus on your goals, not distractions. | 딴 데 한눈팔지 말고, 네 목표에 집중해야 한다.`
+    );
+  };
+
+  // Generate example for a single word
+  const handleGenerateSingleExample = async (idx: number) => {
+    const item = parsedWords[idx];
+    if (!item || !item.word.trim()) {
+      alert('단어를 먼저 입력해주세요.');
+      return;
+    }
+    setGeneratingIndex(idx);
+    try {
+      const res = await generateExampleForWord(item.word, item.meaning, item.pos);
+      if (res.example_sentence) {
+        handleUpdateParsedWord(idx, 'example_sentence', res.example_sentence);
+      }
+      if (res.example_translation) {
+        handleUpdateParsedWord(idx, 'example_translation', res.example_translation);
+      }
+    } catch (err: any) {
+      alert(err.message || 'AI 예문 생성 중 오류가 발생했습니다.');
+    } finally {
+      setGeneratingIndex(null);
+    }
+  };
+
+  // Batch auto-fill example sentences for all words without examples
+  const handleGenerateAllMissingExamples = async () => {
+    const targets = parsedWords
+      .map((item, idx) => ({
+        idx,
+        word: item.word.trim(),
+        meaning: item.meaning.trim(),
+        pos: item.pos,
+        hasExample: Boolean(item.example_sentence?.trim())
+      }))
+      .filter(item => item.word.length > 0 && !item.hasExample);
+
+    if (targets.length === 0) {
+      alert('예문이 비어 있는 단어가 없습니다.');
+      return;
+    }
+
+    setIsGeneratingAllExamples(true);
+    try {
+      const results = await generateExamplesBatch(
+        targets.map(t => ({ word: t.word, meaning: t.meaning, pos: t.pos }))
+      );
+
+      setParsedWords(prev => {
+        const copy = [...prev];
+        for (const t of targets) {
+          const generated = results[t.word.toLowerCase()];
+          if (generated) {
+            copy[t.idx] = {
+              ...copy[t.idx],
+              example_sentence: generated.example_sentence,
+              example_translation: generated.example_translation
+            };
+          }
+        }
+        return copy;
+      });
+    } catch (err: any) {
+      alert(err.message || '일괄 예문 생성 중 오류가 발생했습니다.');
+    } finally {
+      setIsGeneratingAllExamples(false);
+    }
   };
 
   // Manual Add Row
@@ -313,10 +396,10 @@ export const WordbookFormModal: React.FC<WordbookFormModalProps> = ({ isOpen, on
               <div className="p-4 rounded-2xl bg-blue-50 border border-blue-200 text-xs text-blue-950 space-y-1">
                 <p className="font-bold text-blue-900 flex items-center gap-1.5">
                   <Sparkles className="w-4 h-4 text-blue-600" />
-                  Gemini Flash 멀티모달 OCR 교재 자동 추출
+                  Gemini Flash 멀티모달 OCR 교재 자동 추출 (예문 및 해석 포함)
                 </p>
                 <p className="text-slate-600 leading-relaxed">
-                  영어 교재 페이지 촬영 사진(JPG, PNG, WEBP)이나 교재 PDF 문서를 올려주시면 AI가 단어, 발음기호, 품사, 한글 뜻을 자동으로 파싱합니다.
+                  영어 교재 페이지 촬영 사진(JPG, PNG, WEBP)이나 교재 PDF 문서를 올려주시면 AI가 단어, 발음기호, 품사, 한글 뜻과 함께 <strong>교재에 수록된 영어 예문 및 한글 해석</strong>까지 자동으로 파싱합니다.
                 </p>
               </div>
 
@@ -508,24 +591,48 @@ export const WordbookFormModal: React.FC<WordbookFormModalProps> = ({ isOpen, on
           {/* TAB 3: Batch Paste */}
           {activeTab === 'batch' && (
             <div className="space-y-4">
-              <div className="p-4 rounded-2xl bg-white border border-slate-200 text-xs text-slate-700 space-y-1">
-                <p className="font-bold text-slate-800">VocaT / CSV 데이터 포맷 붙여넣기</p>
-                <p className="text-slate-500">
-                  엑셀에서 복사한 탭(Tab) 데이터 또는 <code className="text-blue-700 font-bold bg-blue-50 px-1 py-0.5 rounded">단어, 발음기호, 품사, 뜻</code> 텍스트를 붙여넣은 뒤 파싱 버튼을 누르세요.
-                </p>
+              <div className="p-4 rounded-2xl bg-white border border-slate-200 text-xs text-slate-700 space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="font-bold text-slate-800 text-sm">파이프(|) 구분 단어 데이터 일괄 붙여넣기</p>
+                  <button
+                    type="button"
+                    onClick={handleLoadBatchSample}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-[11px] border border-blue-200 transition-colors"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>파이프(|) 샘플 데이터 넣기</span>
+                  </button>
+                </div>
+                <div className="text-slate-600 leading-relaxed space-y-1">
+                  <p>
+                    각 열은 쉼표(,)가 아닌 <strong className="text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded font-mono border border-blue-200">| (파이프)</strong> 기호로 분리됩니다.
+                  </p>
+                  <p className="text-[11px] text-slate-500">
+                    * 예문과 해석, 뜻 내부에 들어있는 쉼표(,)나 세미콜론(;)은 절대 분리 기준이 되지 않고 온전히 보존됩니다.
+                  </p>
+                  <p className="pt-1">
+                    <span className="font-bold text-slate-800">파싱 규격 (총 6개 필드):</span>{' '}
+                    <code className="text-blue-700 font-bold bg-blue-50 px-1.5 py-0.5 rounded font-mono border border-blue-100">
+                      단어 | 발음기호 | 품사 | 뜻 | 예문 | 예문해석
+                    </code>
+                  </p>
+                  <p className="text-[11px] text-slate-400">
+                    * 발음기호나 예문이 없는 경우 <code className="font-mono text-slate-600 bg-slate-100 px-1 rounded">단어||품사|뜻||</code> 처럼 빈칸으로 둘 수 있습니다.
+                  </p>
+                </div>
               </div>
 
               <div>
                 <textarea
-                  rows={5}
+                  rows={6}
                   value={batchRawText}
                   onChange={(e) => setBatchRawText(e.target.value)}
-                  placeholder={`Word, Pronunciation, POS, Meaning\npersevere, pə̀ːrsəvíər, 동사, 인내하다; 끈기있게 계속하다\nvulnerable, vʌ́lnərəbl, 형용사, 취약한; 상처받기 쉬운`}
+                  placeholder={`단어 | 발음기호 | 품사 | 뜻 | 예문 | 예문해석\npersevere | pə̀ːrsəvíər | 동사 | 인내하다, 끈기 있게 계속하다 | She persevered, despite many obstacles. | 그녀는 많은 장애물에도 불구하고, 끈기 있게 해냈다.\nvulnerable | vʌ́lnərəbl | 형용사 | 취약한, 상처받기 쉬운 | Elderly people are particularly vulnerable to the flu. | 어르신들은 특히 독감, 감기 등에 취약하다.\nfocus on | | 숙어 | ~에 집중하다, 전념하다 | You should focus on your goals, not distractions. | 딴 데 한눈팔지 말고, 네 목표에 집중해야 한다.`}
                   className="w-full p-3.5 rounded-xl bg-white border border-slate-300 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 text-slate-800 placeholder-slate-400"
                 />
               </div>
 
-              <div className="flex justify-end">
+              <div className="flex justify-end gap-2">
                 <button
                   onClick={handleBatchParse}
                   className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-colors shadow-sm"
@@ -539,19 +646,52 @@ export const WordbookFormModal: React.FC<WordbookFormModalProps> = ({ isOpen, on
 
           {/* Parsed Words Editable Table */}
           <div className="space-y-3 pt-4 border-t border-slate-200">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xs font-bold text-slate-800 flex items-center gap-2">
-                <span>등록 대상 단어 목록</span>
-                <span className="px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[11px] font-bold">
-                  총 {parsedWords.length}개
-                </span>
-              </h3>
-              <button
-                onClick={handleAddManualRow}
-                className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 font-bold"
-              >
-                <Plus className="w-3.5 h-3.5" /> 단어 1개 추가
-              </button>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-xs font-bold text-slate-800 flex items-center gap-2">
+                  <span>등록 대상 단어 목록</span>
+                  <span className="px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[11px] font-bold">
+                    총 {parsedWords.length}개
+                  </span>
+                </h3>
+
+                {parsedWords.length > 0 && (
+                  <span className="text-[11px] text-slate-500 font-medium">
+                    (예문 등록: <strong className="text-emerald-700">{parsedWords.filter(w => w.example_sentence?.trim()).length}개</strong> / 미등록: <strong className="text-amber-700">{parsedWords.filter(w => !w.example_sentence?.trim()).length}개</strong>)
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                {parsedWords.some(w => !w.example_sentence?.trim()) && (
+                  <button
+                    type="button"
+                    onClick={handleGenerateAllMissingExamples}
+                    disabled={isGeneratingAllExamples}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 text-xs font-bold transition-colors disabled:opacity-50"
+                    title="예문이 비어 있는 모든 단어에 대해 Gemini AI로 영어 예문 및 한글 해석을 일괄 생성합니다."
+                  >
+                    {isGeneratingAllExamples ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-700" />
+                    ) : (
+                      <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                    )}
+                    <span>
+                      {isGeneratingAllExamples
+                        ? 'AI 예문 일괄 생성 중...'
+                        : `비어있는 예문 AI 자동 완성 (${parsedWords.filter(w => !w.example_sentence?.trim()).length}개)`}
+                    </span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleAddManualRow}
+                  className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 font-bold px-2 py-1"
+                >
+                  <Plus className="w-3.5 h-3.5" /> 단어 1개 추가
+                </button>
+              </div>
             </div>
 
             {parsedWords.length === 0 ? (
@@ -608,21 +748,55 @@ export const WordbookFormModal: React.FC<WordbookFormModalProps> = ({ isOpen, on
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                      <input
-                        type="text"
-                        value={item.example_sentence || ''}
-                        onChange={(e) => handleUpdateParsedWord(idx, 'example_sentence', e.target.value)}
-                        placeholder="예문 (English sentence)"
-                        className="w-full px-2.5 py-1 rounded-lg bg-white border border-slate-300 text-[11px] text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 placeholder-slate-400"
-                      />
-                      <input
-                        type="text"
-                        value={item.example_translation || ''}
-                        onChange={(e) => handleUpdateParsedWord(idx, 'example_translation', e.target.value)}
-                        placeholder="예문 해석 (Korean translation)"
-                        className="w-full px-2.5 py-1 rounded-lg bg-white border border-slate-300 text-[11px] text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 placeholder-slate-400"
-                      />
+                    {/* Example Sentence & Translation Box */}
+                    <div className="space-y-1.5 bg-slate-50/70 p-2.5 rounded-xl border border-slate-200">
+                      <div className="flex items-center justify-between text-[11px] font-bold text-slate-700">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-blue-700">예문 (Example) & 해석</span>
+                          {item.example_sentence && (
+                            <button
+                              type="button"
+                              onClick={() => speakText(item.example_sentence!)}
+                              className="p-1 rounded text-slate-400 hover:text-blue-600 hover:bg-slate-200 transition-colors"
+                              title="예문 발음 듣기"
+                            >
+                              <Volume2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleGenerateSingleExample(idx)}
+                          disabled={generatingIndex === idx || !item.word.trim()}
+                          className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 text-[10px] font-bold transition-colors disabled:opacity-40"
+                          title="이 단어에 대한 영어 예문과 해석을 Gemini AI로 자동 생성"
+                        >
+                          {generatingIndex === idx ? (
+                            <Loader2 className="w-3 h-3 animate-spin text-amber-700" />
+                          ) : (
+                            <Sparkles className="w-3 h-3 text-amber-600" />
+                          )}
+                          <span>{item.example_sentence ? 'AI 예문 재생성' : 'AI 예문 자동 생성'}</span>
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                        <input
+                          type="text"
+                          value={item.example_sentence || ''}
+                          onChange={(e) => handleUpdateParsedWord(idx, 'example_sentence', e.target.value)}
+                          placeholder="영어 예문 (예: She persevered in her studies.)"
+                          className="w-full px-2.5 py-1.5 rounded-lg bg-white border border-slate-300 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 placeholder-slate-400 font-medium"
+                        />
+                        <input
+                          type="text"
+                          value={item.example_translation || ''}
+                          onChange={(e) => handleUpdateParsedWord(idx, 'example_translation', e.target.value)}
+                          placeholder="예문 한글 해석 (예: 그녀는 학업을 인내하며 계속했다.)"
+                          className="w-full px-2.5 py-1.5 rounded-lg bg-white border border-slate-300 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 placeholder-slate-400 font-medium"
+                        />
+                      </div>
                     </div>
 
                     <div className="flex items-center gap-4 text-[11px] pt-1">

@@ -179,12 +179,24 @@ export const IncorrectNotesView: React.FC<IncorrectNotesViewProps> = ({ onStartC
                   )}
 
                   {(isExpanded || w.example_sentence) && (
-                    <div className="pt-2 text-xs text-slate-600 bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-1">
+                    <div className="pt-2 text-xs text-slate-600 bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-1.5">
                       {w.example_sentence && (
-                        <p className="font-bold text-slate-800 italic">&quot;{w.example_sentence}&quot;</p>
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="font-bold text-slate-800 italic leading-relaxed">
+                            &quot;{w.example_sentence}&quot;
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => speakText(w.example_sentence!)}
+                            className="p-1 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-slate-200 shrink-0 transition-colors"
+                            title="예문 발음 듣기"
+                          >
+                            <Volume2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       )}
                       {w.example_translation && (
-                        <p className="text-slate-600 font-medium">{w.example_translation}</p>
+                        <p className="text-slate-600 font-medium">↳ {w.example_translation}</p>
                       )}
                     </div>
                   )}

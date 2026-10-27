@@ -8,13 +8,15 @@ import { Volume2, Eye, EyeOff, RotateCw, Play, Pause, ChevronLeft, ChevronRight,
 
 interface FlashcardStudyProps {
   words: Word[];
+  wordbookId?: string;
   onBack: () => void;
   onStartQuiz: () => void;
 }
 
-export const FlashcardStudy: React.FC<FlashcardStudyProps> = ({ words, onBack, onStartQuiz }) => {
-  // Track active study duration with 3-min idle threshold
-  useStudyTimer(true);
+export const FlashcardStudy: React.FC<FlashcardStudyProps> = ({ words, wordbookId, onBack, onStartQuiz }) => {
+  const activeWbId = wordbookId || words[0]?.wordbook_id;
+  // Track active study duration with 3-min idle threshold and record wordbook activity
+  useStudyTimer(true, activeWbId);
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
@@ -302,13 +304,42 @@ export const FlashcardStudy: React.FC<FlashcardStudyProps> = ({ words, onBack, o
                 </h3>
 
                 {currentWord.example_sentence && (
-                  <div className="pt-3 sm:pt-5 border-t border-slate-200 text-left max-w-2xl mx-auto space-y-1.5 sm:space-y-2 bg-slate-50 p-3.5 sm:p-5 rounded-2xl border border-slate-200 text-xs sm:text-base">
-                    <p className="text-sm sm:text-xl font-bold text-slate-800 leading-relaxed italic">
-                      &quot;{currentWord.example_sentence}&quot;
-                    </p>
+                  <div className="pt-3 sm:pt-4 border-t border-slate-200 text-left max-w-2xl mx-auto bg-slate-50 p-3.5 sm:p-5 rounded-2xl border border-slate-200 space-y-2">
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="text-sm sm:text-lg font-bold text-slate-800 leading-relaxed italic">
+                        &quot;{(() => {
+                          const sentence = currentWord.example_sentence;
+                          const target = currentWord.word.trim();
+                          if (!sentence || !target) return sentence;
+                          const escaped = target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                          const regex = new RegExp(`(\\b${escaped}\\w*|${escaped})`, 'gi');
+                          const parts = sentence.split(regex);
+                          return parts.map((part, i) =>
+                            part.toLowerCase().startsWith(target.toLowerCase()) ? (
+                              <span key={i} className="text-blue-600 font-extrabold underline decoration-blue-300 underline-offset-4">
+                                {part}
+                              </span>
+                            ) : (
+                              part
+                            )
+                          );
+                        })()}&quot;
+                      </p>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          speakText(currentWord.example_sentence!, ttsRate);
+                        }}
+                        className="p-1.5 rounded-xl bg-white text-blue-600 hover:bg-blue-50 border border-slate-200 shadow-2xs shrink-0 transition-colors"
+                        title="예문 발음 듣기"
+                      >
+                        <Volume2 className="w-4 h-4" />
+                      </button>
+                    </div>
                     {currentWord.example_translation && (
-                      <p className="text-xs sm:text-base font-medium text-slate-700 leading-relaxed pt-1.5 border-t border-slate-200/60">
-                        {currentWord.example_translation}
+                      <p className="text-xs sm:text-sm font-medium text-slate-600 leading-relaxed pt-1.5 border-t border-slate-200/60">
+                        ↳ {currentWord.example_translation}
                       </p>
                     )}
                   </div>

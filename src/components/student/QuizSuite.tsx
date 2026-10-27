@@ -7,7 +7,8 @@ import { useVocaStore } from '@/store/useVocaStore';
 import { speakText } from '@/lib/audio';
 import { gradeStudentAnswerWithGemini } from '@/lib/gemini';
 import { useStudyTimer } from '@/hooks/useStudyTimer';
-import { Sparkles, Volume2, Award, ArrowRight, RotateCw, X, ChevronRight, Loader2, CheckCircle2, XCircle } from 'lucide-react';
+import { Sparkles, Volume2, Award, ArrowRight, RotateCw, X, ChevronRight, Loader2, CheckCircle2, XCircle, WifiOff } from 'lucide-react';
+
 
 interface QuizSuiteProps {
   wordbook: Wordbook;
@@ -87,8 +88,8 @@ export const QuizSuite: React.FC<QuizSuiteProps> = ({ wordbook, words, onFinish,
   const [stage, setStage] = useState<'intro' | 'quiz' | 'result'>('intro');
   const [quizSeed, setQuizSeed] = useState(0);
 
-  // Track active study duration while taking quiz
-  useStudyTimer(stage === 'quiz');
+  // Track active study duration while taking quiz and link to wordbook
+  useStudyTimer(stage === 'quiz', wordbook.id);
   const [currentStep, setCurrentStep] = useState(0);
 
   // User input states
@@ -343,11 +344,54 @@ export const QuizSuite: React.FC<QuizSuiteProps> = ({ wordbook, words, onFinish,
           </div>
 
           {wrongList.length > 0 && (
-            <p className="text-xs text-rose-600 pt-2 border-t border-slate-200 font-medium">
-              틀린 단어 {wrongList.length}개가 <strong>오답 노트</strong>에 자동 등록되었습니다.
-            </p>
+            <div className="pt-3 border-t border-slate-200 text-left space-y-2.5">
+              <p className="text-xs text-rose-600 font-bold flex items-center justify-between">
+                <span>틀린 단어 {wrongList.length}개가 <strong>오답 노트</strong>에 자동 등록되었습니다:</span>
+              </p>
+              <div className="max-h-52 overflow-y-auto space-y-2 pr-1">
+                {wrongList.map(item => {
+                  const w = words.find(x => x.id === item.wordId);
+                  if (!w) return null;
+                  return (
+                    <div key={item.wordId} className="p-2.5 rounded-xl bg-white border border-slate-200 text-xs space-y-1 shadow-2xs">
+                      <div className="flex items-center justify-between">
+                        <span className="font-extrabold text-slate-800 text-sm">{w.word}</span>
+                        <span className="text-emerald-700 font-bold">{w.meaning}</span>
+                      </div>
+                      {w.example_sentence && (
+                        <div className="pt-1 flex items-start gap-1.5 text-[11px] text-slate-600">
+                          <button
+                            type="button"
+                            onClick={() => speakText(w.example_sentence!)}
+                            className="p-1 rounded text-slate-400 hover:text-blue-600 shrink-0"
+                            title="예문 발음 듣기"
+                          >
+                            <Volume2 className="w-3.5 h-3.5" />
+                          </button>
+                          <div>
+                            <p className="italic font-medium text-slate-700">&quot;{w.example_sentence}&quot;</p>
+                            {w.example_translation && (
+                              <p className="text-slate-500">↳ {w.example_translation}</p>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+
+          {typeof navigator !== 'undefined' && !navigator.onLine && (
+            <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-semibold flex items-center justify-center gap-2">
+              <WifiOff className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>오프라인 상태에서 응시 완료되었습니다. 네트워크 복구 시 서버로 자동 동기화됩니다.</span>
+            </div>
           )}
         </div>
+
 
         <div className="pt-4 flex items-center justify-center gap-3">
           <button
@@ -516,15 +560,41 @@ export const QuizSuite: React.FC<QuizSuiteProps> = ({ wordbook, words, onFinish,
                   {aiEvalResult.feedback}
                 </p>
 
-                <div className="pt-2 border-t border-slate-200/60 text-xs font-semibold flex items-center justify-between">
-                  <span className="text-slate-600">교재 수록 정답: <strong className="text-slate-900 font-bold">{targetWord.meaning}</strong></span>
-                  <button
-                    onClick={() => handleNextQuestion()}
-                    className="flex items-center gap-1.5 px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-sm transition-all active:scale-95"
-                  >
-                    <span>{currentStep < quizQuestions.length - 1 ? '다음 단어' : '결과 보기'}</span>
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
+                <div className="pt-2 border-t border-slate-200/60 text-xs font-semibold space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-600">교재 수록 정답: <strong className="text-slate-900 font-bold">{targetWord.meaning}</strong></span>
+                  </div>
+
+                  {targetWord.example_sentence && (
+                    <div className="pt-1.5 border-t border-slate-200/60 text-xs text-slate-700 bg-white/70 p-2.5 rounded-xl border border-slate-200">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="italic font-bold text-slate-800">
+                          &quot;{targetWord.example_sentence}&quot;
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => speakText(targetWord.example_sentence!)}
+                          className="p-1 rounded text-slate-400 hover:text-blue-600 transition-colors shrink-0"
+                          title="예문 발음 듣기"
+                        >
+                          <Volume2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      {targetWord.example_translation && (
+                        <p className="text-[11px] text-slate-500 font-medium mt-0.5">↳ {targetWord.example_translation}</p>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="flex justify-end pt-1">
+                    <button
+                      onClick={() => handleNextQuestion()}
+                      className="flex items-center gap-1.5 px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-sm transition-all active:scale-95"
+                    >
+                      <span>{currentStep < quizQuestions.length - 1 ? '다음 단어' : '결과 보기'}</span>
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               </div>
             )}

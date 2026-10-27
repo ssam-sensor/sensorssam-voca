@@ -92,6 +92,7 @@ export interface StudyLog {
   student_id: string;
   study_date: string; // YYYY-MM-DD
   duration_seconds: number;
+  wordbook_ids?: string[];
   created_at?: string;
 }
 

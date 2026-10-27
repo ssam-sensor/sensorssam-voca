@@ -3,6 +3,8 @@ import { Wordbook, Word, QuizResult, IncorrectNote, UserRole, SettingsConfig, Vo
 import { SAMPLE_WORDBOOKS, SAMPLE_WORDS } from '@/lib/sample-data';
 import { getSupabaseClient } from '@/lib/supabase';
 import { maskEmail, maskName } from '@/utils/masking';
+import { enqueuePendingQuizResult, syncPendingQuizResults } from '@/lib/offline-sync';
+import { getLocalDateStr } from '@/lib/date-utils';
 
 interface VocaState {
   // Auth & Profile
@@ -65,10 +67,11 @@ interface VocaState {
       spellingMax: number;
       meaningScore: number;
       meaningMax: number;
+      quizSeconds?: number;
     }
   ) => Promise<void>;
   resolveIncorrectNote: (noteId: string) => Promise<void>;
-  addStudyTime: (seconds: number) => Promise<void>;
+  addStudyTime: (seconds: number, wordbookId?: string) => Promise<void>;
   resetToSampleData: () => void;
 }
 
@@ -653,12 +656,52 @@ export const useVocaStore = create<VocaState>((set, get) => ({
         try {
           let logsQuery = client.from('study_logs').select('*').order('study_date', { ascending: false });
           if (get().userRole === 'student' && userId) {
-            logsQuery = logsQuery.or(`student_id.eq.${userId},student_id.is.null`);
+            logsQuery = logsQuery.or(`student_id.eq.${userId},student_id.is.null,user_id.eq.${userId},user_id.is.null`);
           }
           const { data: logsData } = await logsQuery;
 
-          if (logsData) {
-            set({ studyLogs: logsData });
+          // Normalize columns in case DB has legacy schema (user_id, count, course_id)
+          const normalizedDbLogs: StudyLog[] = (logsData || []).map((raw: any) => ({
+            id: raw.id,
+            student_id: raw.student_id || raw.user_id || '',
+            study_date: raw.study_date ? raw.study_date.slice(0, 10) : '',
+            duration_seconds: raw.duration_seconds ?? raw.count ?? 0,
+            wordbook_ids: raw.wordbook_ids || (raw.course_id ? [raw.course_id] : []),
+            created_at: raw.created_at
+          }));
+
+          // Merge with localStorage study logs as fallback
+          const mergedLogs: StudyLog[] = [...normalizedDbLogs];
+          const localKeyId = userId || get().studentId;
+          if (typeof window !== 'undefined' && localKeyId) {
+            try {
+              const localSaved = localStorage.getItem(`vocat_study_logs_${localKeyId}`);
+              if (localSaved) {
+                const parsedLocal: StudyLog[] = JSON.parse(localSaved);
+                if (Array.isArray(parsedLocal)) {
+                  parsedLocal.forEach(pLog => {
+                    const idx = mergedLogs.findIndex(
+                      m => (m.student_id === pLog.student_id || !m.student_id) && m.study_date === pLog.study_date
+                    );
+                    if (idx < 0) {
+                      mergedLogs.push(pLog);
+                    } else if ((pLog.duration_seconds || 0) > (mergedLogs[idx].duration_seconds || 0)) {
+                      mergedLogs[idx] = {
+                        ...mergedLogs[idx],
+                        duration_seconds: pLog.duration_seconds,
+                        wordbook_ids: pLog.wordbook_ids || mergedLogs[idx].wordbook_ids
+                      };
+                    }
+                  });
+                }
+              }
+            } catch (e) {
+              console.warn('Failed parsing local study logs:', e);
+            }
+          }
+
+          if (mergedLogs.length > 0) {
+            set({ studyLogs: mergedLogs });
           }
         } catch (e) {
           console.warn('Failed fetching study_logs:', e);
@@ -666,8 +709,8 @@ export const useVocaStore = create<VocaState>((set, get) => ({
 
         // Auto-mark attendance row for today if student enters app
         const currentStudentId = get().studentId;
-        const todayStr = new Date().toISOString().split('T')[0];
-        if (currentStudentId) {
+        const todayStr = getLocalDateStr(new Date());
+        if (currentStudentId && get().userRole === 'student') {
           const hasTodayLog = get().studyLogs.some(l => l.student_id === currentStudentId && l.study_date === todayStr);
           if (!hasTodayLog) {
             get().addStudyTime(0); // 0 seconds to mark attendance row in DB
@@ -800,12 +843,59 @@ export const useVocaStore = create<VocaState>((set, get) => ({
             if (typeof window !== 'undefined') {
               localStorage.setItem(wbKey, JSON.stringify(activeWbs));
               localStorage.setItem(wordsKey, JSON.stringify(wordsMap));
+              localStorage.setItem('vocat_cached_all_wordbooks', JSON.stringify(activeWbs));
+              localStorage.setItem('vocat_cached_words', JSON.stringify(wordsMap));
             }
+          } else if (typeof window !== 'undefined') {
+            localStorage.setItem('vocat_cached_all_wordbooks', JSON.stringify(activeWbs));
+            localStorage.setItem('vocat_cached_words', JSON.stringify(wordsMap));
           }
+
+          // Auto-sync any pending offline quiz results if online
+          if (typeof navigator !== 'undefined' && navigator.onLine) {
+            syncPendingQuizResults().catch(e => console.warn('[OfflineSync] Auto-sync error:', e));
+          }
+
           return;
         }
       } catch (err) {
         console.warn('Supabase initial load error:', err);
+      }
+    }
+
+    // OFFLINE FALLBACK: If Supabase connection fails or device is offline, restore from local cache
+    if (typeof window !== 'undefined') {
+      const activeUserId = get().tutorId || get().studentId;
+      const cachedWbs = (activeUserId ? localStorage.getItem(getWbKey(activeUserId)) : null) ||
+        localStorage.getItem('vocat_cached_all_wordbooks');
+      const cachedWords = (activeUserId ? localStorage.getItem(getWordsKey(activeUserId)) : null) ||
+        localStorage.getItem('vocat_cached_words');
+      const cachedQr = localStorage.getItem('vocat_local_quiz_results');
+      const cachedInc = localStorage.getItem('vocat_local_incorrect');
+
+      if (cachedWbs) {
+        try {
+          const parsedWbs: Wordbook[] = JSON.parse(cachedWbs);
+          const parsedWords: Record<string, Word[]> = cachedWords ? JSON.parse(cachedWords) : {};
+          const parsedQr: QuizResult[] = cachedQr ? JSON.parse(cachedQr) : [];
+          const parsedInc: IncorrectNote[] = cachedInc ? JSON.parse(cachedInc) : [];
+
+          if (Array.isArray(parsedWbs) && parsedWbs.length > 0) {
+            console.log('[Offline] Loaded cached wordbooks & words for offline study:', parsedWbs.length);
+            set({
+              allWordbooks: parsedWbs,
+              wordbooks: parsedWbs,
+              words: parsedWords,
+              quizResults: parsedQr,
+              incorrectNotes: parsedInc,
+              activeWordbookId: parsedWbs[0]?.id || null,
+              isLoading: false
+            });
+            return;
+          }
+        } catch (cacheErr) {
+          console.warn('[Offline] Failed parsing cached wordbooks:', cacheErr);
+        }
       }
     }
 
@@ -1260,8 +1350,20 @@ export const useVocaStore = create<VocaState>((set, get) => ({
     const client = getSupabaseClient();
     const dbStudentId = isUuid(activeStudentId) ? activeStudentId : null;
     const dbWordbookId = isUuid(wordbookId) ? wordbookId : null;
+    const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
 
-    if (client && dbWordbookId) {
+    if (isOffline) {
+      console.log('[Offline] Device is offline. Enqueueing quiz result for auto-sync.');
+      if (dbWordbookId) {
+        enqueuePendingQuizResult({
+          student_id: dbStudentId,
+          wordbook_id: dbWordbookId,
+          total_score: totalScore,
+          max_score: maxScore,
+          wrong_words: wrongWordIds
+        });
+      }
+    } else if (client && dbWordbookId) {
       try {
         const { error: qrErr } = await client.from('quiz_results').insert({
           ...(dbStudentId ? { student_id: dbStudentId } : {}),
@@ -1270,30 +1372,46 @@ export const useVocaStore = create<VocaState>((set, get) => ({
           max_score: maxScore
         });
 
-        if (qrErr) console.error('Supabase recordQuizResult error:', qrErr);
-
-        for (const item of wrongWordIds) {
-          if (!isUuid(item.wordId)) continue;
-          const existing = get().incorrectNotes.find(n => n.word_id === item.wordId);
-          if (existing && isUuid(existing.id)) {
-            await client.from('incorrect_notes').update({
-              wrong_count: existing.wrong_count,
-              last_wrong_answer: item.wrongAnswer,
-              is_resolved: false,
-              updated_at: new Date().toISOString()
-            }).eq('id', existing.id);
-          } else {
-            await client.from('incorrect_notes').insert({
-              ...(dbStudentId ? { student_id: dbStudentId } : {}),
-              word_id: item.wordId,
-              wrong_count: 1,
-              last_wrong_answer: item.wrongAnswer,
-              is_resolved: false
-            });
+        if (qrErr) {
+          console.error('Supabase recordQuizResult error, queuing offline sync:', qrErr);
+          enqueuePendingQuizResult({
+            student_id: dbStudentId,
+            wordbook_id: dbWordbookId,
+            total_score: totalScore,
+            max_score: maxScore,
+            wrong_words: wrongWordIds
+          });
+        } else {
+          for (const item of wrongWordIds) {
+            if (!isUuid(item.wordId)) continue;
+            const existing = get().incorrectNotes.find(n => n.word_id === item.wordId);
+            if (existing && isUuid(existing.id)) {
+              await client.from('incorrect_notes').update({
+                wrong_count: existing.wrong_count,
+                last_wrong_answer: item.wrongAnswer,
+                is_resolved: false,
+                updated_at: new Date().toISOString()
+              }).eq('id', existing.id);
+            } else {
+              await client.from('incorrect_notes').insert({
+                ...(dbStudentId ? { student_id: dbStudentId } : {}),
+                word_id: item.wordId,
+                wrong_count: 1,
+                last_wrong_answer: item.wrongAnswer,
+                is_resolved: false
+              });
+            }
           }
         }
       } catch (err) {
-        console.warn('Failed recording quiz result to Supabase:', err);
+        console.warn('Failed recording quiz result to Supabase, queuing offline sync:', err);
+        enqueuePendingQuizResult({
+          student_id: dbStudentId,
+          wordbook_id: dbWordbookId,
+          total_score: totalScore,
+          max_score: maxScore,
+          wrong_words: wrongWordIds
+        });
       }
     }
 
@@ -1301,25 +1419,40 @@ export const useVocaStore = create<VocaState>((set, get) => ({
       localStorage.setItem('vocat_local_quiz_results', JSON.stringify(updatedResults));
       localStorage.setItem('vocat_local_incorrect', JSON.stringify(currentNotes));
     }
+
+    // Automatically record attendance & study time for completing this quiz
+    const quizDuration = Math.max(60, partDetails?.quizSeconds || 90);
+    await get().addStudyTime(quizDuration, wordbookId);
   },
 
   studyLogs: [],
 
-  addStudyTime: async (seconds: number) => {
+  addStudyTime: async (seconds: number, wordbookId?: string) => {
     if (seconds < 0) return;
-    const studentId = get().studentId;
-    if (!studentId) return;
-    const today = new Date().toISOString().split('T')[0];
+    let studentId = get().studentId;
+    if (!studentId) {
+      studentId = getOrCreateUserId();
+      set({ studentId });
+    }
+    const today = getLocalDateStr(new Date());
 
     const currentLogs = [...get().studyLogs];
-    const existingIdx = currentLogs.findIndex(l => l.student_id === studentId && l.study_date === today);
+    const existingIdx = currentLogs.findIndex(
+      l => (l.student_id === studentId || (!l.student_id && get().userRole === 'student')) && l.study_date === today
+    );
 
     let updatedDuration = seconds;
     if (existingIdx >= 0) {
       updatedDuration = (currentLogs[existingIdx].duration_seconds || 0) + seconds;
+      const existingWbIds = currentLogs[existingIdx].wordbook_ids || [];
+      const updatedWbIds = wordbookId && !existingWbIds.includes(wordbookId)
+        ? [...existingWbIds, wordbookId]
+        : existingWbIds;
+
       currentLogs[existingIdx] = {
         ...currentLogs[existingIdx],
-        duration_seconds: updatedDuration
+        duration_seconds: updatedDuration,
+        wordbook_ids: updatedWbIds
       };
     } else {
       currentLogs.push({
@@ -1327,6 +1460,7 @@ export const useVocaStore = create<VocaState>((set, get) => ({
         student_id: studentId,
         study_date: today,
         duration_seconds: updatedDuration,
+        wordbook_ids: wordbookId ? [wordbookId] : [],
         created_at: new Date().toISOString()
       });
     }
@@ -1339,11 +1473,47 @@ export const useVocaStore = create<VocaState>((set, get) => ({
     const client = getSupabaseClient();
     if (client && isUuid(studentId)) {
       try {
-        await client.from('study_logs').upsert({
-          student_id: studentId,
-          study_date: today,
-          duration_seconds: updatedDuration
-        }, { onConflict: 'student_id,study_date' });
+        const { data: existingRows } = await client
+          .from('study_logs')
+          .select('id, duration_seconds, count')
+          .or(`student_id.eq.${studentId},user_id.eq.${studentId}`)
+          .eq('study_date', today);
+
+        if (existingRows && existingRows.length > 0) {
+          const rowId = existingRows[0].id;
+          const { error: updErr } = await client
+            .from('study_logs')
+            .update({
+              duration_seconds: updatedDuration,
+              ...(wordbookId ? { wordbook_ids: currentLogs[existingIdx]?.wordbook_ids || [wordbookId] } : {})
+            })
+            .eq('id', rowId);
+
+          if (updErr) {
+            // Fallback for legacy DB schema with 'count' column
+            await client
+              .from('study_logs')
+              .update({ count: updatedDuration })
+              .eq('id', rowId);
+          }
+        } else {
+          // Try standard schema insert (student_id, duration_seconds)
+          const { error: insErr } = await client.from('study_logs').insert({
+            student_id: studentId,
+            study_date: today,
+            duration_seconds: updatedDuration,
+            ...(wordbookId ? { wordbook_ids: [wordbookId] } : {})
+          });
+
+          if (insErr) {
+            // Fallback for legacy DB schema with user_id & count columns
+            await client.from('study_logs').insert({
+              user_id: studentId,
+              study_date: today,
+              count: updatedDuration
+            });
+          }
+        }
       } catch (err) {
         console.warn('Supabase addStudyTime error:', err);
       }

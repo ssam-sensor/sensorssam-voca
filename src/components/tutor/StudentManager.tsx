@@ -1,10 +1,13 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useVocaStore } from '@/store/useVocaStore';
 import { SAMPLE_WORDBOOKS } from '@/lib/sample-data';
 import { StudentReportModal } from '@/components/tutor/StudentReportModal';
-import { Users, Award, BookOpen, AlertTriangle, FileSpreadsheet, UserCheck, ChevronRight, CheckCircle2 } from 'lucide-react';
+import { calculateStudentStudyStats } from '@/lib/study-analytics';
+import { formatDuration, getLocalDateStr } from '@/lib/date-utils';
+import { AttendanceCalendar } from '@/components/study/AttendanceCalendar';
+import { Users, Award, BookOpen, AlertTriangle, FileSpreadsheet, UserCheck, ChevronRight, CheckCircle2, Clock } from 'lucide-react';
 
 export const StudentManager: React.FC = () => {
   const { quizResults, incorrectNotes, availableStudents, studyLogs, allWordbooks, wordbooks } = useVocaStore();
@@ -43,56 +46,27 @@ export const StudentManager: React.FC = () => {
   const activeStudent = defaultStudents.find(s => s.id === selectedStudentId) || defaultStudents[0];
   const selectedStudentName = activeStudent?.name || '학생';
 
-  // Filter quiz results & study logs for selected student
+  const [todayDateStr, setTodayDateStr] = useState<string>('');
+  useEffect(() => {
+    setTodayDateStr(getLocalDateStr(new Date()));
+  }, []);
+
+  // Calculate comprehensive student study statistics (study time + attendance + lessons)
+  const studentStats = useMemo(() => {
+    return calculateStudentStudyStats({
+      studentId: activeStudent?.id,
+      studyLogs,
+      quizResults,
+      allWordbooks,
+      wordbooks,
+      todayDateStr
+    });
+  }, [activeStudent?.id, studyLogs, quizResults, allWordbooks, wordbooks, todayDateStr]);
+
+  // Filter quiz results for selected student
   const studentQuizResults = quizResults.filter(
     q => q.student_id === activeStudent?.id || !q.student_id || selectedStudentId === 'sample-student-01'
   );
-
-  const studentLogs = studyLogs.filter(
-    l => l.student_id === activeStudent?.id || !l.student_id || selectedStudentId === 'sample-student-01'
-  );
-
-  const [dates, setDates] = useState({ todayStr: '', sevenDaysAgoStr: '' });
-
-  useEffect(() => {
-    const now = new Date();
-    const today = now.toISOString().split('T')[0];
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
-    setDates({
-      todayStr: today,
-      sevenDaysAgoStr: sevenDaysAgo.toISOString().split('T')[0]
-    });
-  }, []);
-
-  const todayStr = dates.todayStr;
-  const sevenDaysAgoStr = dates.sevenDaysAgoStr;
-
-  const todayLog = studentLogs.find(l => l.study_date === todayStr);
-  const todaySeconds = todayLog?.duration_seconds || 0;
-
-  const thisWeekLogs = studentLogs.filter(l => l.study_date >= sevenDaysAgoStr && l.study_date <= todayStr);
-  const attendanceDaysThisWeek = new Set(thisWeekLogs.map(l => l.study_date)).size;
-  const weeklyTotalSeconds = thisWeekLogs.reduce((acc, l) => acc + (l.duration_seconds || 0), 0);
-
-  const formatDuration = (sec: number) => {
-    if (sec <= 0) return '0분';
-    if (sec < 60) return `${sec}초`;
-    const mins = Math.floor(sec / 60);
-    const hours = Math.floor(mins / 60);
-    const remMins = mins % 60;
-    if (hours > 0) {
-      return remMins > 0 ? `${hours}시간 ${remMins}분` : `${hours}시간`;
-    }
-    return `${mins}분`;
-  };
-
-  const totalQuizzesTaken = studentQuizResults.length;
-  const averageScorePct = totalQuizzesTaken > 0
-    ? Math.round(
-        studentQuizResults.reduce((acc, q) => acc + (q.total_score / (q.max_score || 1)) * 100, 0) / totalQuizzesTaken
-      )
-    : 0;
 
   const unresolvedWrongCount = incorrectNotes.filter(
     n => !n.is_resolved && (n.student_id === activeStudent?.id || !n.student_id || selectedStudentId === 'sample-student-01')
@@ -173,21 +147,23 @@ export const StudentManager: React.FC = () => {
       {/* 2. Student Overview Stats (출석일수 + 공부시간 + 시험성적) */}
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
         <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-1">
-          <p className="text-xs text-slate-500 font-medium">이번 주 출석 일수</p>
-          <h3 className="text-2xl font-extrabold text-blue-700">{attendanceDaysThisWeek} <span className="text-xs text-slate-500 font-bold">/ 7일</span></h3>
-          <p className="text-[11px] text-slate-400">출석률 {Math.round((attendanceDaysThisWeek / 7) * 100)}%</p>
+          <p className="text-xs text-slate-500 font-medium">총 공부한 시간</p>
+          <h3 className="text-2xl font-extrabold text-indigo-700">{formatDuration(studentStats.totalStudySeconds)}</h3>
+          <p className="text-[11px] text-slate-400">
+            오늘 {formatDuration(studentStats.todayStudySeconds)} · 이번 주 {formatDuration(studentStats.weeklyStudySeconds)}
+          </p>
         </div>
 
         <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-1">
-          <p className="text-xs text-slate-500 font-medium">오늘 공부한 시간</p>
-          <h3 className="text-2xl font-extrabold text-indigo-700">{formatDuration(todaySeconds)}</h3>
-          <p className="text-[11px] text-slate-400">이번 주 총 {formatDuration(weeklyTotalSeconds)}</p>
+          <p className="text-xs text-slate-500 font-medium">이번 주 출석 일수</p>
+          <h3 className="text-2xl font-extrabold text-blue-700">{studentStats.weeklyAttendanceDays} <span className="text-xs text-slate-500 font-bold">/ 7일</span></h3>
+          <p className="text-[11px] text-slate-400">총 누적 {studentStats.totalAttendanceDays}일 출석 인정</p>
         </div>
 
         <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-1">
           <p className="text-xs text-slate-500 font-medium">평균 시험 정답률</p>
-          <h3 className="text-2xl font-extrabold text-emerald-700">{averageScorePct}%</h3>
-          <p className="text-[11px] text-slate-400">총 {totalQuizzesTaken}회 평가 응시</p>
+          <h3 className="text-2xl font-extrabold text-emerald-700">{studentStats.averageScorePct}%</h3>
+          <p className="text-[11px] text-slate-400">총 {studentStats.totalQuizzesTaken}회 평가 응시</p>
         </div>
 
         <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-1">
@@ -196,6 +172,12 @@ export const StudentManager: React.FC = () => {
           <p className="text-[11px] text-slate-400">집중 복습 진행 필요</p>
         </div>
       </div>
+
+      {/* 2.5 Attendance & Daily Lesson Calendar (출석 및 일자별 수행 과 확인 달력) */}
+      <AttendanceCalendar
+        stats={studentStats}
+        studentName={selectedStudentName}
+      />
 
       {/* 3. Roster & Quiz Log */}
       <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
