@@ -141,6 +141,20 @@ export const QuizSuite: React.FC<QuizSuiteProps> = ({ wordbook, words, onFinish,
     }
   }, [currentStep, stage, currentQuestion?.type, aiEvalResult]);
 
+  // Enter shortcut to advance to next question after AI grading result appears
+  useEffect(() => {
+    if (stage === 'quiz' && aiEvalResult) {
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          handleNextQuestion();
+        }
+      };
+      window.addEventListener('keydown', handleKeyDown);
+      return () => window.removeEventListener('keydown', handleKeyDown);
+    }
+  }, [stage, aiEvalResult, currentStep, quizQuestions.length, wrongList, score]);
+
   const handleStartQuiz = () => {
     setQuizSeed(prev => prev + 1);
     setStage('quiz');
@@ -591,7 +605,7 @@ export const QuizSuite: React.FC<QuizSuiteProps> = ({ wordbook, words, onFinish,
                       onClick={() => handleNextQuestion()}
                       className="flex items-center gap-1.5 px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-sm transition-all active:scale-95"
                     >
-                      <span>{currentStep < quizQuestions.length - 1 ? '다음 단어' : '결과 보기'}</span>
+                      <span>{currentStep < quizQuestions.length - 1 ? '다음 단어 (Enter ↵)' : '결과 보기 (Enter ↵)'}</span>
                       <ChevronRight className="w-4 h-4" />
                     </button>
                   </div>

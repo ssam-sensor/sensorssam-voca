@@ -6,6 +6,7 @@ import { Wordbook, Word } from '@/types/database';
 import { FlashcardStudy } from '@/components/student/FlashcardStudy';
 import { QuizSuite } from '@/components/student/QuizSuite';
 import { IncorrectNotesView } from '@/components/student/IncorrectNotesView';
+import { BookmarkedWordsView } from '@/components/student/BookmarkedWordsView';
 import { WordbookFormModal } from '@/components/tutor/WordbookFormModal';
 import { AttendanceCalendar } from '@/components/study/AttendanceCalendar';
 import { calculateStudentStudyStats } from '@/lib/study-analytics';
@@ -22,7 +23,8 @@ import {
   Square,
   Users,
   FileSpreadsheet,
-  Calendar
+  Calendar,
+  Bookmark
 } from 'lucide-react';
 
 export const StudentDashboard: React.FC = () => {
@@ -41,12 +43,21 @@ export const StudentDashboard: React.FC = () => {
     linkedTutorIds,
     toggleLinkedTutorId,
     userName,
-    openStudentReport
+    openStudentReport,
+    bookmarkedWordIds
   } = useVocaStore();
 
-  const [activeTab, setActiveTab] = useState<'study' | 'quiz' | 'incorrect' | 'calendar'>('study');
+  const [activeTab, setActiveTab] = useState<'study' | 'bookmarks' | 'quiz' | 'incorrect' | 'calendar'>('study');
   const [quizMode, setQuizMode] = useState<'standard' | 'ai'>('standard');
-  const [customQuizWords, setCustomQuizWords] = useState<Word[] | null>(null);
+  const [customQuizConfig, setCustomQuizConfig] = useState<{
+    words: Word[];
+    title: string;
+    chapter?: string;
+  } | null>(null);
+  const [customStudyConfig, setCustomStudyConfig] = useState<{
+    words: Word[];
+    title: string;
+  } | null>(null);
   const [isFormModalOpen, setIsFormModalOpen] = useState<boolean>(false);
 
   const [todayDateStr, setTodayDateStr] = useState<string>('');
@@ -68,6 +79,14 @@ export const StudentDashboard: React.FC = () => {
   const selectedWb = wordbooks.find(w => w.id === activeWordbookId) || wordbooks[0];
   const currentWords = words[selectedWb?.id] || [];
 
+  const allWordsList = useMemo(() => Object.values(words).flat(), [words]);
+  const totalBookmarkedCount = useMemo(() => {
+    return allWordsList.filter(w => bookmarkedWordIds.includes(w.id)).length;
+  }, [allWordsList, bookmarkedWordIds]);
+  const chapterBookmarkedCount = useMemo(() => {
+    return currentWords.filter(w => bookmarkedWordIds.includes(w.id)).length;
+  }, [currentWords, bookmarkedWordIds]);
+
   const unresolvedWrongCount = incorrectNotes.filter(n => !n.is_resolved).length;
 
   const handleDeleteWordbook = async (wb: Wordbook, e: React.MouseEvent) => {
@@ -84,20 +103,38 @@ export const StudentDashboard: React.FC = () => {
     }
   };
 
-  // Handle custom quiz for wrong answers
-  if (customQuizWords) {
+  // Handle custom quiz for wrong answers or review words
+  if (customQuizConfig) {
     const dummyWb: Wordbook = {
-      id: 'wb-custom-wrong',
-      title: '오답 집중 재시험',
-      chapter: 'REVIEW'
+      id: 'wb-custom-quiz',
+      title: customQuizConfig.title,
+      chapter: customQuizConfig.chapter || 'REVIEW'
     };
 
     return (
       <QuizSuite
         wordbook={dummyWb}
-        words={customQuizWords}
+        words={customQuizConfig.words}
         mode="standard"
-        onFinish={() => setCustomQuizWords(null)}
+        onFinish={() => setCustomQuizConfig(null)}
+      />
+    );
+  }
+
+  // Handle custom flashcard study for bookmarked review words
+  if (customStudyConfig) {
+    return (
+      <FlashcardStudy
+        words={customStudyConfig.words}
+        customTitle={customStudyConfig.title}
+        initialFilterMode="bookmarked"
+        onBack={() => setCustomStudyConfig(null)}
+        onStartQuiz={(customWords) => {
+          setCustomQuizConfig({
+            words: customWords || customStudyConfig.words,
+            title: `${customStudyConfig.title} 맞춤 시험`
+          });
+        }}
       />
     );
   }
@@ -206,8 +243,22 @@ export const StudentDashboard: React.FC = () => {
               <h1 className="text-xl sm:text-3xl font-extrabold text-slate-800 tracking-tight leading-snug">
                 {selectedWb.title} <span className="text-blue-600 font-mono">[{selectedWb.chapter}]</span>
               </h1>
-              <p className="text-xs text-slate-500 font-medium">
-                총 {currentWords.length}개 단어 (스펠링 필수: {currentWords.filter(w=>w.is_spelling_priority).length}개)
+              <p className="text-xs text-slate-500 font-medium flex flex-wrap items-center gap-1.5">
+                <span>총 {currentWords.length}개 단어</span>
+                <span>•</span>
+                <span>스펠링 필수: {currentWords.filter(w=>w.is_spelling_priority).length}개</span>
+                {chapterBookmarkedCount > 0 && (
+                  <>
+                    <span>•</span>
+                    <button
+                      onClick={() => setActiveTab('study')}
+                      className="text-amber-800 font-bold inline-flex items-center gap-1 hover:underline cursor-pointer"
+                    >
+                      <Bookmark className="w-3.5 h-3.5 fill-amber-500 text-amber-600" />
+                      다시 볼 단어: {chapterBookmarkedCount}개
+                    </button>
+                  </>
+                )}
               </p>
             </div>
 
@@ -307,10 +358,10 @@ export const StudentDashboard: React.FC = () => {
       )}
 
       {/* Main Mode Sub-Navigation Tabs */}
-      <div className="flex border-b border-slate-200 gap-2 sm:gap-6 text-xs font-bold pt-2">
+      <div className="flex border-b border-slate-200 gap-2 sm:gap-6 text-xs font-bold pt-2 overflow-x-auto scrollbar-none">
         <button
           onClick={() => setActiveTab('study')}
-          className={`pb-3 border-b-2 flex items-center justify-center sm:justify-start gap-1.5 sm:gap-2 transition-colors ${
+          className={`pb-3 border-b-2 flex items-center justify-center sm:justify-start gap-1.5 sm:gap-2 transition-colors shrink-0 ${
             activeTab === 'study'
               ? 'border-blue-600 text-blue-600 font-extrabold'
               : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -321,8 +372,25 @@ export const StudentDashboard: React.FC = () => {
         </button>
 
         <button
+          onClick={() => setActiveTab('bookmarks')}
+          className={`pb-3 border-b-2 flex items-center justify-center sm:justify-start gap-1.5 sm:gap-2 transition-colors shrink-0 relative ${
+            activeTab === 'bookmarks'
+              ? 'border-amber-600 text-amber-600 font-extrabold'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <Bookmark className="w-4 h-4 text-amber-600 shrink-0" />
+          <span>다시 볼 단어</span>
+          {totalBookmarkedCount > 0 && (
+            <span className="px-1.5 py-0.5 rounded-full bg-amber-500 text-white text-[10px] font-extrabold">
+              {totalBookmarkedCount}
+            </span>
+          )}
+        </button>
+
+        <button
           onClick={() => setActiveTab('incorrect')}
-          className={`pb-3 border-b-2 flex items-center justify-center sm:justify-start gap-1.5 sm:gap-2 transition-colors relative ${
+          className={`pb-3 border-b-2 flex items-center justify-center sm:justify-start gap-1.5 sm:gap-2 transition-colors shrink-0 relative ${
             activeTab === 'incorrect'
               ? 'border-rose-600 text-rose-600 font-extrabold'
               : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -339,7 +407,7 @@ export const StudentDashboard: React.FC = () => {
 
         <button
           onClick={() => setActiveTab('calendar')}
-          className={`pb-3 border-b-2 flex items-center justify-center sm:justify-start gap-1.5 sm:gap-2 transition-colors ${
+          className={`pb-3 border-b-2 flex items-center justify-center sm:justify-start gap-1.5 sm:gap-2 transition-colors shrink-0 ${
             activeTab === 'calendar'
               ? 'border-indigo-600 text-indigo-600 font-extrabold'
               : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -356,13 +424,45 @@ export const StudentDashboard: React.FC = () => {
           words={currentWords}
           wordbookId={selectedWb?.id}
           onBack={() => {}}
-          onStartQuiz={() => setActiveTab('quiz')}
+          onStartQuiz={(customWords) => {
+            if (customWords && customWords.length > 0) {
+              setCustomQuizConfig({
+                words: customWords,
+                title: '다시 볼 단어 맞춤 시험'
+              });
+            } else {
+              setActiveTab('quiz');
+            }
+          }}
+        />
+      )}
+
+      {activeTab === 'bookmarks' && (
+        <BookmarkedWordsView
+          onStartFlashcards={(bookmarkedWords) => {
+            setCustomStudyConfig({
+              words: bookmarkedWords,
+              title: '다시 볼 단어 집중 복습'
+            });
+          }}
+          onStartQuiz={(bookmarkedWords) => {
+            setCustomQuizConfig({
+              words: bookmarkedWords,
+              title: '다시 볼 단어 집중 시험'
+            });
+          }}
+          onGoToStudy={() => setActiveTab('study')}
         />
       )}
 
       {activeTab === 'incorrect' && (
         <IncorrectNotesView
-          onStartCustomQuiz={(wrongWords) => setCustomQuizWords(wrongWords)}
+          onStartCustomQuiz={(wrongWords) => {
+            setCustomQuizConfig({
+              words: wrongWords,
+              title: '오답 집중 재시험'
+            });
+          }}
         />
       )}
 

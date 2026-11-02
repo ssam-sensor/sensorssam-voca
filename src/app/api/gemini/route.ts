@@ -2,9 +2,9 @@ import { NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
 
 const FALLBACK_MODEL_CHAIN = [
-  process.env.NEXT_PUBLIC_GEMINI_MODEL || process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite',
-  'gemini-2.5-flash',
-  'gemini-1.5-flash'
+  process.env.NEXT_PUBLIC_GEMINI_MODEL || process.env.GEMINI_MODEL || 'gemini-2.0-flash',
+  'gemini-1.5-flash',
+  'gemini-2.0-flash-lite'
 ];
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -12,14 +12,21 @@ const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 async function executeGeminiWithRetry(
   ai: GoogleGenAI,
   generateParamsFunc: (model: string) => any,
-  maxRetries = 2
+  maxRetries = 1,
+  timeoutMs = 8000
 ): Promise<string> {
   let lastErr: any = null;
 
   for (const model of FALLBACK_MODEL_CHAIN) {
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
-        const response = await ai.models.generateContent(generateParamsFunc(model));
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('AI 요청 시간 초과 (Timeout)')), timeoutMs)
+        );
+        const response = await Promise.race([
+          ai.models.generateContent(generateParamsFunc(model)),
+          timeoutPromise
+        ]);
         const text = response.text || '';
         if (text) return text;
       } catch (err: any) {
@@ -38,7 +45,7 @@ async function executeGeminiWithRetry(
         );
 
         if (is503 && attempt < maxRetries) {
-          await sleep(1000 * (attempt + 1));
+          await sleep(500 * (attempt + 1));
           continue;
         } else {
           // Break inner attempt loop and try next model in FALLBACK_MODEL_CHAIN
@@ -279,31 +286,56 @@ Guidelines:
     // 5. AI Test Real-time Meaning Grading
     if (action === 'grade_ai_test') {
       const { word, correctMeaning, pos, studentAnswer } = body;
-      const prompt = `You are an AI English Tutor grading a Korean student's typed meaning answer in a vocabulary test.
-English Word: "${word}" (${pos || ''})
-Official Dictionary Meaning: "${correctMeaning}"
-Student's Typed Korean Answer: "${studentAnswer}"
 
-Evaluate if the student's typed Korean answer accurately captures the correct meaning or valid synonyms/paraphrases for "${word}".
+      // Fast-path: Check if answer directly matches dictionary meaning
+      const clean = (s: string) =>
+        (s || '')
+          .toLowerCase()
+          .replace(/\s+/g, '')
+          .replace(/[~.~!?,()\[\]"'`]/g, '');
 
-Return a raw JSON object:
+      const studentClean = clean(studentAnswer);
+      const dictParts = (correctMeaning || '')
+        .split(/[;,/]/)
+        .map((p: string) => clean(p.replace(/\(.*?\)/g, '')))
+        .filter(Boolean);
+
+      if (dictParts.some((p: string) => p === studentClean) || clean(correctMeaning) === studentClean) {
+        return NextResponse.json({
+          isCorrect: true,
+          score: 100,
+          feedback: '정답입니다! (사전 수록 뜻과 일치)'
+        });
+      }
+
+      const prompt = `Grade a Korean student's typed meaning for an English vocabulary test.
+Word: "${word}" (${pos || ''})
+Dictionary Meaning: "${correctMeaning}"
+Student's Typed Answer: "${studentAnswer}"
+
+Does the student's typed answer accurately capture the correct meaning, valid synonym, or context paraphrase?
+Return ONLY raw JSON:
 {
   "isCorrect": true or false,
-  "score": 0 to 100 (integer score: 100 for exact/synonym match, 70-90 for partial, 0 for incorrect),
-  "feedback": "Concise 1-2 sentence polite Korean explanation of why it is correct or what nuance/meaning was missed."
-}
-
-Return ONLY raw JSON without markdown codeblock formatting.`;
+  "score": 0 to 100,
+  "feedback": "Concise 1 sentence in Korean."
+}`;
 
       try {
-        const resultText = await executeGeminiWithRetry(ai, (model) => ({
-          model,
-          contents: prompt,
-          config: {
-            temperature: 0.1,
-            responseMimeType: 'application/json'
-          }
-        }));
+        const resultText = await executeGeminiWithRetry(
+          ai,
+          (model) => ({
+            model,
+            contents: prompt,
+            config: {
+              temperature: 0.1,
+              maxOutputTokens: 120,
+              responseMimeType: 'application/json'
+            }
+          }),
+          1,
+          5000
+        );
 
         const cleaned = resultText.replace(/```json\n?|\n?```/g, '').trim();
         const evalResult = JSON.parse(cleaned);

@@ -175,3 +175,17 @@ create policy "Public quiz results" on quiz_results for all using (true);
 create policy "Public incorrect notes" on incorrect_notes for all using (true);
 create policy "Public study logs" on study_logs for all using (true);
 
+-- 7. 북마크 및 다시 볼 단어 테이블
+create table if not exists bookmarked_words (
+  id uuid default gen_random_uuid() primary key,
+  student_id uuid references profiles(id) on delete cascade,
+  word_id uuid references words(id) on delete cascade,
+  created_at timestamp with time zone default timezone('utc'::text, now()),
+  unique(student_id, word_id)
+);
+
+alter table bookmarked_words enable row level security;
+drop policy if exists "Public bookmarked words" on bookmarked_words;
+create policy "Public bookmarked words" on bookmarked_words for all using (true);
+
+

@@ -54,6 +54,10 @@ interface VocaState {
   quizResults: QuizResult[];
   incorrectNotes: IncorrectNote[];
   studyLogs: StudyLog[];
+  bookmarkedWordIds: string[];
+  toggleBookmarkWord: (wordId: string) => Promise<void>;
+  isWordBookmarked: (wordId: string) => boolean;
+  clearBookmarkedWords: (wordIds?: string[]) => Promise<void>;
   isStudentReportOpen: boolean;
   openStudentReport: () => void;
   closeStudentReport: () => void;
@@ -321,6 +325,7 @@ export const useVocaStore = create<VocaState>((set, get) => ({
       linkedStudentIds: [],
       wordbooks: [],
       words: {},
+      bookmarkedWordIds: [],
       activeWordbookId: null
     });
   },
@@ -389,6 +394,7 @@ export const useVocaStore = create<VocaState>((set, get) => ({
 
   quizResults: [],
   incorrectNotes: [],
+  bookmarkedWordIds: [],
   isStudentReportOpen: false,
   openStudentReport: () => set({ isStudentReportOpen: true }),
   closeStudentReport: () => set({ isStudentReportOpen: false }),
@@ -405,13 +411,23 @@ export const useVocaStore = create<VocaState>((set, get) => ({
       const storedName = localStorage.getItem('vocat_user_name') || '';
       const initialRole = storedAccountRole || storedUserRole || get().accountRole || 'student';
       const localUserId = getOrCreateUserId();
+      let localBookmarks: string[] = [];
+      const savedBm = localStorage.getItem(`vocat_bookmarked_words_${localUserId}`) || localStorage.getItem('vocat_bookmarked_words');
+      if (savedBm) {
+        try {
+          const parsed = JSON.parse(savedBm);
+          if (Array.isArray(parsed)) localBookmarks = parsed;
+        } catch {}
+      }
+
       set({
         isVerifiedWithInviteCode: isVerified,
         accountRole: initialRole,
         userRole: storedUserRole || initialRole,
         userName: storedName || get().userName,
         studentId: get().studentId || localUserId,
-        tutorId: get().tutorId || localUserId
+        tutorId: get().tutorId || localUserId,
+        bookmarkedWordIds: localBookmarks
       });
     }
 
@@ -828,11 +844,37 @@ export const useVocaStore = create<VocaState>((set, get) => ({
             };
           });
 
+          let dbBookmarkIds: string[] = [];
+          if (client && userId && isUuid(userId)) {
+            try {
+              const { data: bData } = await client.from('bookmarked_words').select('word_id').eq('student_id', userId);
+              if (bData && Array.isArray(bData)) {
+                dbBookmarkIds = bData.map(b => b.word_id);
+              }
+            } catch (err) {
+              // Silently ignore if table doesn't exist yet
+            }
+          }
+
+          let localBookmarkIds: string[] = [];
+          if (typeof window !== 'undefined') {
+            const localKey = `vocat_bookmarked_words_${userId || 'default'}`;
+            const saved = localStorage.getItem(localKey) || localStorage.getItem('vocat_bookmarked_words');
+            if (saved) {
+              try {
+                const parsed = JSON.parse(saved);
+                if (Array.isArray(parsed)) localBookmarkIds = parsed;
+              } catch {}
+            }
+          }
+          const mergedBookmarks = Array.from(new Set([...dbBookmarkIds, ...localBookmarkIds]));
+
           set({
             wordbooks: activeWbs,
             words: wordsMap,
             quizResults: enrichedQrData,
             incorrectNotes: incData || [],
+            bookmarkedWordIds: mergedBookmarks,
             activeWordbookId: activeWbs[0]?.id || null,
             isLoading: false
           });
@@ -880,6 +922,18 @@ export const useVocaStore = create<VocaState>((set, get) => ({
           const parsedQr: QuizResult[] = cachedQr ? JSON.parse(cachedQr) : [];
           const parsedInc: IncorrectNote[] = cachedInc ? JSON.parse(cachedInc) : [];
 
+          let cachedBookmarksList: string[] = [];
+          if (typeof window !== 'undefined') {
+            const cachedBm = (activeUserId ? localStorage.getItem(`vocat_bookmarked_words_${activeUserId}`) : null) ||
+              localStorage.getItem('vocat_bookmarked_words');
+            if (cachedBm) {
+              try {
+                const parsedBm = JSON.parse(cachedBm);
+                if (Array.isArray(parsedBm)) cachedBookmarksList = parsedBm;
+              } catch {}
+            }
+          }
+
           if (Array.isArray(parsedWbs) && parsedWbs.length > 0) {
             console.log('[Offline] Loaded cached wordbooks & words for offline study:', parsedWbs.length);
             set({
@@ -888,6 +942,7 @@ export const useVocaStore = create<VocaState>((set, get) => ({
               words: parsedWords,
               quizResults: parsedQr,
               incorrectNotes: parsedInc,
+              bookmarkedWordIds: cachedBookmarksList,
               activeWordbookId: parsedWbs[0]?.id || null,
               isLoading: false
             });
@@ -1535,6 +1590,75 @@ export const useVocaStore = create<VocaState>((set, get) => ({
 
     if (typeof window !== 'undefined') {
       localStorage.setItem('vocat_local_incorrect', JSON.stringify(updatedNotes));
+    }
+  },
+
+  toggleBookmarkWord: async (wordId: string) => {
+    const current = get().bookmarkedWordIds || [];
+    const exists = current.includes(wordId);
+    const updated = exists ? current.filter(id => id !== wordId) : [...current, wordId];
+    set({ bookmarkedWordIds: updated });
+
+    const studentId = get().studentId;
+    if (typeof window !== 'undefined') {
+      const activeId = studentId || 'default';
+      localStorage.setItem(`vocat_bookmarked_words_${activeId}`, JSON.stringify(updated));
+      localStorage.setItem('vocat_bookmarked_words', JSON.stringify(updated));
+    }
+
+    const client = getSupabaseClient();
+    if (client && isUuid(studentId) && isUuid(wordId)) {
+      try {
+        if (!exists) {
+          await client.from('bookmarked_words').upsert({
+            student_id: studentId,
+            word_id: wordId,
+            created_at: new Date().toISOString()
+          }, { onConflict: 'student_id,word_id' });
+        } else {
+          await client.from('bookmarked_words')
+            .delete()
+            .eq('student_id', studentId)
+            .eq('word_id', wordId);
+        }
+      } catch (err) {
+        console.warn('Supabase bookmarked_words sync note:', err);
+      }
+    }
+  },
+
+  isWordBookmarked: (wordId: string) => {
+    return (get().bookmarkedWordIds || []).includes(wordId);
+  },
+
+  clearBookmarkedWords: async (wordIds?: string[]) => {
+    const current = get().bookmarkedWordIds || [];
+    const updated = wordIds ? current.filter(id => !wordIds.includes(id)) : [];
+    set({ bookmarkedWordIds: updated });
+
+    const studentId = get().studentId;
+    if (typeof window !== 'undefined') {
+      const activeId = studentId || 'default';
+      localStorage.setItem(`vocat_bookmarked_words_${activeId}`, JSON.stringify(updated));
+      localStorage.setItem('vocat_bookmarked_words', JSON.stringify(updated));
+    }
+
+    const client = getSupabaseClient();
+    if (client && isUuid(studentId)) {
+      try {
+        if (wordIds && wordIds.length > 0) {
+          await client.from('bookmarked_words')
+            .delete()
+            .eq('student_id', studentId)
+            .in('word_id', wordIds);
+        } else {
+          await client.from('bookmarked_words')
+            .delete()
+            .eq('student_id', studentId);
+        }
+      } catch (err) {
+        console.warn('Supabase clear bookmarked_words note:', err);
+      }
     }
   },
 

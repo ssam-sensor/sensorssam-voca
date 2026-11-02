@@ -21,9 +21,9 @@ export function getGeminiApiKey(): string {
  * Candidate models ordered by reliability & fallback priority
  */
 const FALLBACK_MODEL_CHAIN = [
-  process.env.NEXT_PUBLIC_GEMINI_MODEL || process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite',
-  'gemini-2.5-flash',
-  'gemini-1.5-flash'
+  process.env.NEXT_PUBLIC_GEMINI_MODEL || process.env.GEMINI_MODEL || 'gemini-2.0-flash',
+  'gemini-1.5-flash',
+  'gemini-2.0-flash-lite'
 ];
 
 /**
@@ -142,8 +142,11 @@ export async function compressImageBase64(
 /**
  * Helper function to call server-side Next.js API route (/api/gemini)
  */
-async function callServerGeminiApi(payload: any): Promise<any> {
+async function callServerGeminiApi(payload: any, timeoutMs = 12000): Promise<any> {
   const customApiKey = getGeminiApiKey();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
   let res: Response;
   try {
     res = await fetch('/api/gemini', {
@@ -152,10 +155,16 @@ async function callServerGeminiApi(payload: any): Promise<any> {
       body: JSON.stringify({
         ...payload,
         customApiKey: customApiKey || undefined
-      })
+      }),
+      signal: controller.signal
     });
   } catch (netErr: any) {
+    if (netErr?.name === 'AbortError') {
+      throw new Error('AI 채점 서버 응답 시간이 초과되었습니다.');
+    }
     throw new Error('웹 서버에 연결할 수 없습니다. 인터넷 네트워크 연결 상태를 확인해 주세요.');
+  } finally {
+    clearTimeout(timer);
   }
 
   let data: any = {};
@@ -304,7 +313,43 @@ function generateFallbackCoachingFeedback(stats: {
 }
 
 /**
- * AI Real-time Meaning Grading Helper
+ * Instant Fast-Path local matcher for dictionary meaning (<1ms response)
+ */
+export function checkFastMeaningMatch(correctMeaning: string, studentAnswer: string): boolean {
+  if (!studentAnswer || !correctMeaning) return false;
+
+  const clean = (s: string) =>
+    (s || '')
+      .toLowerCase()
+      .replace(/\s+/g, '')
+      .replace(/[~.~!?,()\[\]"'`]/g, '');
+
+  const studentClean = clean(studentAnswer);
+  if (!studentClean) return false;
+
+  // Split dictionary definitions by semicolon, comma, slash
+  const parts = correctMeaning
+    .split(/[;,/]/)
+    .map(p => clean(p.replace(/\(.*?\)/g, '')))
+    .filter(Boolean);
+
+  // 1. Exact match with any definition part (e.g. "동반하다" in "동반하다; 수반하다")
+  if (parts.some(p => p === studentClean)) return true;
+
+  // 2. High-confidence prefix/exact match
+  if (parts.some(p => p.length >= 2 && studentClean.length >= 2 && (p === studentClean || p.startsWith(studentClean)))) {
+    return true;
+  }
+
+  // 3. Whole clean string match
+  const wholeClean = clean(correctMeaning.replace(/\(.*?\)/g, ''));
+  if (wholeClean === studentClean) return true;
+
+  return false;
+}
+
+/**
+ * AI Real-time Meaning Grading Helper with Fast-Path
  */
 export async function gradeStudentAnswerWithGemini(
   word: string,
@@ -316,6 +361,16 @@ export async function gradeStudentAnswerWithGemini(
     return { isCorrect: false, score: 0, feedback: '답안이 입력되지 않았습니다.' };
   }
 
+  // 1. INSTANT FAST-PATH: If student answer directly matches dictionary meaning, return in 0ms!
+  if (checkFastMeaningMatch(correctMeaning, studentAnswer)) {
+    return {
+      isCorrect: true,
+      score: 100,
+      feedback: '정답입니다! (교재 수록 뜻과 정확히 일치)'
+    };
+  }
+
+  // 2. AI SEMANTIC GRADING: For synonyms, paraphrases, and context interpretations
   try {
     const data = await callServerGeminiApi({
       action: 'grade_ai_test',
@@ -323,7 +378,7 @@ export async function gradeStudentAnswerWithGemini(
       correctMeaning,
       pos,
       studentAnswer
-    });
+    }, 6000); // 6s timeout for instant response
 
     return {
       isCorrect: Boolean(data.isCorrect),
@@ -332,7 +387,7 @@ export async function gradeStudentAnswerWithGemini(
     };
   } catch (err) {
     console.warn('Gemini AI grading fallback:', err);
-    // Intelligent local fallback if offline or AI call fails
+    // Intelligent local fallback if offline or AI call times out
     const cleanedStudent = studentAnswer.trim().toLowerCase();
     const meanings = correctMeaning.split(/[;,]/).map(m => m.trim().toLowerCase());
     const match = meanings.some(m => cleanedStudent.includes(m) || m.includes(cleanedStudent));
